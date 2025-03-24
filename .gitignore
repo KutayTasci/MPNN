@@ -13,4 +13,4 @@ build/
 data/
 
 # Exclude (include) the specific file
-!data/dataset.py
+!/data/dataset.py
