@@ -1,0 +1,16 @@
+# Ignore Python compiled files
+__pycache__/
+*.pyc
+
+# Ignore log files
+*.log
+
+# Ignore environment files
+.env
+
+# Ignore build artifacts
+build/
+data/
+
+# Exclude (include) the specific file
+!data/dataset.py

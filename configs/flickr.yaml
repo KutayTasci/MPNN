@@ -1,0 +1,9 @@
+#Training parameters for Flickr dataset YML file
+
+# Training parameters
+hidden_channels: 64
+num_layers: 2
+epochs: 100
+learning_rate: 0.01
+optimizer: adam
+loss: binary_crossentropy
