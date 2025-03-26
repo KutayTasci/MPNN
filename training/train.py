@@ -58,6 +58,32 @@ class Trainer_Flickr:
             acc = correct / data.test_mask.sum().item()
             return acc
         
+class Trainer_ModelNet:
+    # Flickr trains transductively
+    def __init__(self, model, optimizer, loss_fn, device):
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.device = device
+    
+    def train(self, data):
+        self.model.train()
+        self.optimizer.zero_grad()
+        
+        out = self.model(data.pos.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device),data.edge_attr.to(self.device))
+        loss = self.loss_fn(out[0], data.y[0])
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
+    
+    def test(self, data):
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(data.pos.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device), data.edge_attr.to(self.device))
+            loss = self.loss_fn(out[0], data.y[0])
+            return loss.item()
+        
+        
     
 def Train_QM9(model, data_loader, optimizer, loss_fn, device, epochs=3, benchmark=False):
     train_loader, val_loader, test_loader = data_loader
@@ -124,3 +150,27 @@ def Train_Flickr(model, data, optimizer, loss_fn, device, epochs=3, benchmark=Fa
         print(f"Training Time: {end-start:.4f} seconds")
         #print(f"Final Test Accuracy: {test_acc:.4f}")
         print(f"Troughput: {epochs/(end-start):.3f} epoch/sec")
+
+
+def Train_ModelNet(model, data_loader, optimizer, loss_fn, device, epochs=3, benchmark=False):
+    train_loader, test_loader = data_loader
+    trainer = Trainer_ModelNet(model, optimizer, loss_fn, device)
+    if benchmark:
+        start = time.time()
+    
+    for epoch in range(epochs):
+        loss = 0
+        for data in train_loader:
+            data.to(device)
+            loss += trainer.train(data)
+        
+    if benchmark:
+        end = time.time()
+        print(f"Training Time: {end-start:.4f} seconds")
+        #print(f"Final Test Accuracy: {test_acc:.4f}")
+        print(f"Troughput: {epochs/(end-start):.3f} epoch/sec")
+        test_loss = 0
+        for data in test_loader:
+            data.to(device)
+            test_loss += trainer.test(data)
+        print(f"Validation Loss: {test_loss:.4f}")
