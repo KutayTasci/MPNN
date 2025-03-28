@@ -7,8 +7,9 @@ import torch.profiler
 #flickr_exp.FlickrExperiment(benchmark=True, model_type='sum')
 #qm9_exp.QM9Experiment(benchmark=True, model_type='cat', batch_size=32000)
 
-modelnet_exp.ModelNetExperiment(benchmark=True, model_type='cat')
 modelnet_exp.ModelNetExperiment(benchmark=True, model_type='sum')
+modelnet_exp.ModelNetExperiment(benchmark=True, model_type='cat')
+
 
 
 

@@ -19,8 +19,8 @@ class MPNNLayerCat(MessagePassing):
         """
         super(MPNNLayerCat, self).__init__(aggr='add')  # Aggregation type: sum
         # The linear layer expects concatenated features of x_i, x_j, and edge_attr.
-        self.linear = Linear((in_channels * 2) + edge_channels, out_channels)
-        self.linear_out = Linear(out_channels+in_channels, out_channels)
+        self.linear = Linear((in_channels * 2) + edge_channels, out_channels, bias = False)
+        self.linear_out = Linear(out_channels+in_channels, out_channels, bias = False)
 
     def forward(self, x, edge_index, edge_attr):
         """
@@ -81,10 +81,10 @@ class MPNNLayerSum(MessagePassing):
         """
         super(MPNNLayerSum, self).__init__(aggr='add')
         # Fused linear layer for both target and source nodes.
-        self.fused_linear = Linear(in_channels, out_channels * 2)
+        self.fused_linear = Linear(in_channels, out_channels * 2, bias = False)
         # Linear layer for edge attributes.
-        self.linear_3 = Linear(edge_channels, out_channels, bias=False)
-        self.linear_out = Linear(out_channels+in_channels, out_channels)
+        self.linear_3 = Linear(edge_channels, out_channels, bias = False)
+        self.linear_out = Linear(out_channels+in_channels, out_channels, bias = False)
         # Fused linear transformation for node features.
         # Create two CUDA streams
         self.stream1 = torch.cuda.Stream()
@@ -115,8 +115,6 @@ class MPNNLayerSum(MessagePassing):
         # Propagate using the fused features.
         es = self.linear_3(edge_attr)  # Edge features
 
-        # Synchronize streams (optional, if you need to wait for completion)
-        #torch.cuda.synchronize()
         
         
         return self.propagate(edge_index,x=x, xs=xs, xt=xt, edge_attr=es)

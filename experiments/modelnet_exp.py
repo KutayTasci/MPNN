@@ -12,6 +12,19 @@ import torch_geometric.transforms as T
 warnings.filterwarnings("ignore")
 
 
+class AddRandomEdgeAttributes(object):
+    def __init__(self, num_edge_features):
+        """
+        Args:
+            num_edge_features (int): Number of features to assign to each edge.
+        """
+        self.num_edge_features = num_edge_features
+
+    def __call__(self, data):
+        num_edges = data.edge_index.size(1)
+        data.edge_attr = torch.rand((num_edges, self.num_edge_features), dtype=torch.float)
+        return data
+
 def Train_On_MPNN(benchmark, dataset, model_type='cat', batch_size=128, no_classes=10):
     cfg = yaml.safe_load(open("configs/modelnet.yaml"))
     # Model Parameters
@@ -40,12 +53,10 @@ def Train_On_MPNN(benchmark, dataset, model_type='cat', batch_size=128, no_class
 def ModelNetExperiment(benchmark=False, model_type='cat'):
     no_classes = 10
     # Initialize the dataset
-    transform = T.Compose([T.FaceToEdge(remove_faces=True), T.Distance(norm=True)])
+    transform = T.Compose([T.Distance(norm=True)])
 
     modelnet_dataset = ModelNetDataset(root='data/ModelNet', name=str(no_classes), transform=transform)
 
-    Train_On_MPNN(benchmark, modelnet_dataset, model_type=model_type, batch_size=4, no_classes=no_classes)
-
-    
+    Train_On_MPNN(benchmark, modelnet_dataset, model_type=model_type, batch_size=32, no_classes=no_classes)
 
 

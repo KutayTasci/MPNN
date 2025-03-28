@@ -190,11 +190,13 @@ class ModelNetDataset:
         self.root = root
         self.name = name
         self.transform = transform
-        self.pre_transform = T.FaceToEdge(remove_faces=True)  # Convert mesh faces to edge indices
+        self.pre_transform = T.FaceToEdge(remove_faces=False)  # Convert mesh faces to edge indices
 
         # Load the training and test datasets
         self.train_dataset = ModelNet(root=self.root, name=self.name, train=True,
                                       transform=self.transform, pre_transform=self.pre_transform)
+        
+        
         self.test_dataset = ModelNet(root=self.root, name=self.name, train=False,
                                      transform=self.transform, pre_transform=self.pre_transform)
 
