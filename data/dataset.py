@@ -91,9 +91,9 @@ class QM9Dataset:
         # test_dataset = dataset[n_train+n_val:]
 
         # Create DataLoaders
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, collate_fn=collate_fn, persistent_workers=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True, collate_fn=collate_fn, persistent_workers=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True, collate_fn=collate_fn, persistent_workers=True)
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, persistent_workers=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True)
    
         return train_loader, val_loader, test_loader
     
@@ -212,7 +212,19 @@ class ModelNetDataset:
             tuple: (train_loader, test_loader) DataLoader objects.
         """
 
-        train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle)
-        test_loader = DataLoader(self.test_dataset, batch_size=batch_size, shuffle=False)
+        train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
+        test_loader = DataLoader(self.test_dataset, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, persistent_workers=True, prefetch_factor=4)
         return train_loader, test_loader
+    
+    def get_full_graphs(self):
+        """
+        Returns the dataset as full graphs for train and test.
+
+        Returns:
+            tuple: (train_data, test_data)
+        """
+        train_data = Batch.from_data_list(self.train_dataset)
+        test_data = Batch.from_data_list(self.test_dataset)
+
+        return train_data, test_data
     

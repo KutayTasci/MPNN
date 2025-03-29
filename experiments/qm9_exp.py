@@ -32,8 +32,8 @@ def Train_On_MPNN(benchmark, dataset, model_type='cat', batch_size=128):
     model = MPNN_QM9(in_channels, edge_channels, hidden_channels, out_channels, num_layers, mode=model_type).to(device)
     optimizer = Adam(model.parameters(), lr=learning_rate)
 
-    #train.Train_QM9(model, (train_loader, val_loader, test_loader), optimizer, F.mse_loss, device, epochs=epochs, benchmark=benchmark)
-    train.Train_QM9_FB(model, (train_set, val_set, test_set), optimizer, F.mse_loss, device, epochs=epochs, benchmark=benchmark)
+    train.Train_QM9(model, (train_loader, val_loader, test_loader), optimizer, F.mse_loss, device, epochs=epochs, benchmark=benchmark)
+    #train.Train_QM9_FB(model, (train_set, val_set, test_set), optimizer, F.mse_loss, device, epochs=epochs, benchmark=benchmark)
 
     
 

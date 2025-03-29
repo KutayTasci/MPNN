@@ -174,3 +174,22 @@ def Train_ModelNet(model, data_loader, optimizer, loss_fn, device, epochs=3, ben
             data.to(device)
             test_loss += trainer.test(data)
         print(f"Validation Loss: {test_loss:.4f}")
+
+def Train_ModelNet_FB(model, data_loader, optimizer, loss_fn, device, epochs=3, benchmark=False):
+    train_set, test_set = data_loader
+    train_set.to(device)
+    test_set.to(device)
+    trainer = Trainer_ModelNet(model, optimizer, loss_fn, device)
+    if benchmark:
+        start = time.time()
+    
+    for epoch in range(epochs):
+        loss = trainer.train(train_set)
+        if not benchmark:
+            test_loss = trainer.test(test_set)
+            print(f"Epoch {epoch+1:03d} | Loss: {loss:.4f} | Test Loss: {test_loss:.4f}")
+    if benchmark:
+        end = time.time()
+        print(f"Training Time: {end-start:.4f} seconds")
+        #print(f"Final Test Accuracy: {test_acc:.4f}")
+        print(f"Troughput: {epochs/(end-start):.3f} epoch/sec")

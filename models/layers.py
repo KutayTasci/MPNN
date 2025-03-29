@@ -85,10 +85,7 @@ class MPNNLayerSum(MessagePassing):
         # Linear layer for edge attributes.
         self.linear_3 = Linear(edge_channels, out_channels, bias = False)
         self.linear_out = Linear(out_channels+in_channels, out_channels, bias = False)
-        # Fused linear transformation for node features.
-        # Create two CUDA streams
-        self.stream1 = torch.cuda.Stream()
-        self.stream2 = torch.cuda.Stream()
+
         
 
     def forward(self, x, edge_index, edge_attr):
@@ -104,18 +101,11 @@ class MPNNLayerSum(MessagePassing):
             Tensor: Updated node features.
         """
         
-        # Execute function_1 on stream1
-        #with torch.cuda.stream(self.stream1):
         fused_out = self.fused_linear(x)  # Shape: (N, 2*out_channels)
-        # Split the fused output into target and source node representations.
         xs, xt = fused_out.chunk(2, dim=1)
 
-        # Execute function_2 on stream2
-        #with torch.cuda.stream(self.stream2):
-        # Propagate using the fused features.
-        es = self.linear_3(edge_attr)  # Edge features
 
-        
+        es = self.linear_3(edge_attr)  # Edge features
         
         return self.propagate(edge_index,x=x, xs=xs, xt=xt, edge_attr=es)
 
@@ -135,7 +125,7 @@ class MPNNLayerSum(MessagePassing):
         """
         # In-place addition: xs_i = xs_i + xt_j + edge_attr
         
-        return F.relu(xs_i.add_(xt_j).add_(edge_attr))
+        return F.relu(torch.add(torch.add(xs_i , xt_j ), edge_attr))
 
     def update(self, aggr_out, x):
         """

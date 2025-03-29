@@ -36,6 +36,7 @@ def FlickrExperiment(benchmark=False, model_type='cat'):
     dataset = FlickrDataset()
     data = dataset.get_data()
 
+    print('Experiment for model type: ', model_type)
     # Train MPNN
     Train_On_MPNN(data, benchmark, model_type=model_type)
     
