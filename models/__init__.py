@@ -1,2 +1,2 @@
-from .mpnn import MPNN
-from .layers import MPNNLayerCat, MPNNLayerSum
+from .mpnn import MPNN_GC
+from .layers import MPNNLayer

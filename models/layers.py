@@ -8,69 +8,9 @@ import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn import MessagePassing
 
-class MPNNLayerCat(MessagePassing):
-    def __init__(self, in_channels, edge_channels, out_channels):
-        """
-        MPNN Layer for 'cat' mode.
-        
-        In this mode, the same node features are used for source and target nodes.
-        The message function concatenates the target node features (x_i),
-        source node features (x_j), and edge features, then applies a linear transformation.
-        """
-        super(MPNNLayerCat, self).__init__(aggr='add')  # Aggregation type: sum
-        # The linear layer expects concatenated features of x_i, x_j, and edge_attr.
-        self.linear = Linear((in_channels * 2) + edge_channels, out_channels, bias = False)
-        self.linear_out = Linear(out_channels+in_channels, out_channels, bias = False)
 
-    def forward(self, x, edge_index, edge_attr):
-        """
-        Forward pass for 'cat' mode.
-        
-        Args:
-            x (Tensor): Node features (N, F).
-            edge_index (Tensor): Edge indices (2, E).
-            edge_attr (Tensor): Edge features.
-        
-        Returns:
-            Tensor: Updated node features.
-        """
-        # Propagate using the same x for both source and target.
-        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
-
-    def message(self, x_i, x_j, edge_attr):
-        """
-        Message function for 'cat' mode.
-        
-        Concatenates target node features (x_i), source node features (x_j),
-        and edge features along the feature dimension and applies a linear transformation.
-        
-        Args:
-            x_i (Tensor): Features of target nodes.
-            x_j (Tensor): Features of source nodes.
-            edge_attr (Tensor): Edge features.
-        
-        Returns:
-            Tensor: Transformed messages.
-        """
-        # Concatenate features and transform.
-        return F.relu(self.linear(torch.cat([x_i, x_j, edge_attr], dim=1)))
-
-    def update(self, aggr_out, x):
-        """
-        Update function: Applies a ReLU non-linearity on the aggregated messages.
-        
-        Args:
-            aggr_out (Tensor): Aggregated messages.
-        
-        Returns:
-            Tensor: Updated node features.
-        """
-
-        return F.relu(self.linear_out(torch.cat([x, aggr_out], dim=1)))
-
-
-class MPNNLayerSum(MessagePassing):
-    def __init__(self, in_channels, edge_channels, out_channels):
+class MPNNLayer(MessagePassing):
+    def __init__(self, in_channels, edge_channels, out_channels, custom_kernel=None):
         """
         MPNN Layer for 'sum' mode using fused linear operations.
         
@@ -79,16 +19,21 @@ class MPNNLayerSum(MessagePassing):
         into xs (target features) and xt (source features). The edge features are processed
         separately.
         """
-        super(MPNNLayerSum, self).__init__(aggr='add')
+        super(MPNNLayer, self).__init__(aggr='add')
         # Fused linear layer for both target and source nodes.
-        self.fused_linear = Linear(in_channels, out_channels * 2, bias = False)
+        self.linear_1 = Linear(in_channels, out_channels)
+        self.linear_2 = Linear(in_channels, out_channels)
         # Linear layer for edge attributes.
-        self.linear_3 = Linear(edge_channels, out_channels, bias = False)
-        self.linear_out = Linear(out_channels+in_channels, out_channels, bias = False)
+        self.linear_3 = Linear(edge_channels, out_channels)
+        self.custom_kernel = custom_kernel
+        self.linear_out = Linear(out_channels+in_channels, out_channels)
 
-        
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.edge_channels = edge_channels
 
-    def forward(self, x, edge_index, edge_attr):
+
+    def forward(self, x, edge_index, edge_attr, pos):
         """
         Forward pass for 'sum' mode.
         
@@ -100,16 +45,15 @@ class MPNNLayerSum(MessagePassing):
         Returns:
             Tensor: Updated node features.
         """
+        x_s = self.linear_1(x)
+        x_t = self.linear_2(x)
+
+        if self.edge_channels > 0:
+            edge_attr = self.linear_3(edge_attr)
         
-        fused_out = self.fused_linear(x)  # Shape: (N, 2*out_channels)
-        xs, xt = fused_out.chunk(2, dim=1)
+        return self.propagate(xs=x_s, xt=x_t,x = x, edge_attr=edge_attr, pos=pos, edge_index=edge_index)
 
-
-        es = self.linear_3(edge_attr)  # Edge features
-        
-        return self.propagate(edge_index,x=x, xs=xs, xt=xt, edge_attr=es)
-
-    def message(self, xs_i, xt_j, edge_attr):
+    def message(self, xs_i, xt_j, pos, edge_attr, edge_index):
         """
         Message function for 'sum' mode.
         
@@ -123,9 +67,23 @@ class MPNNLayerSum(MessagePassing):
         Returns:
             Tensor: Message tensor.
         """
-        # In-place addition: xs_i = xs_i + xt_j + edge_attr
+
+        #euclidean distance
+        if self.custom_kernel is not None:
+            dist = torch.norm(pos[edge_index[0]] - pos[edge_index[1]], dim=1)
+            # Reshape dist to 2d
+            dist = dist.view(-1, 1)
+            euclid_dist = self.custom_kernel(dist)
+            
+            if self.edge_channels > 0:
+                euclid_dist  = torch.add(edge_attr, euclid_dist)
+
         
-        return F.relu(torch.add(torch.add(xs_i , xt_j ), edge_attr))
+            return F.relu(torch.add(torch.add(xs_i , xt_j ), euclid_dist ))
+        
+        else:
+            # Default behavior: sum of transformed features.
+            return F.relu(torch.add(xs_i , xt_j ))
 
     def update(self, aggr_out, x):
         """
