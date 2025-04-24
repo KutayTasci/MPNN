@@ -3,10 +3,11 @@ import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn import MessagePassing
 from models.layers import MPNNLayer
+import torch.nn as nn
 from torch_geometric.nn import GCNConv, global_mean_pool
 
 class MPNN_GC(torch.nn.Module):
-    def __init__(self, custom_kernel, in_channels, edge_channels, hidden_channels, out_channels, num_layers=2):
+    def __init__(self, custom_kernel, in_channels, edge_channels, hidden_channels, out_channels, num_layers=2, task = None):
         """
         Initializes an MPNN model.
 
@@ -26,7 +27,7 @@ class MPNN_GC(torch.nn.Module):
                 self.layers.append(MPNNLayer(hidden_channels, edge_channels, hidden_channels, custom_kernel=custom_kernel))
 
         self.output_layer = Linear(hidden_channels, out_channels)
-
+        self.task = task
 
     def forward(self, x,  edge_index, batch, edge_attr, pos):
         """
@@ -45,5 +46,27 @@ class MPNN_GC(torch.nn.Module):
             x = F.relu(x)
 
         x = global_mean_pool(x, batch)
-        return self.output_layer(x)
+        out = self.output_layer(x)
 
+        return out
+
+
+class EGNNNetwork(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, edge_channels=0, num_layers=3):
+        super(EGNNNetwork, self).__init__()
+        self.layers = nn.ModuleList()
+        for i in range(num_layers):
+            in_c = in_channels if i == 0 else hidden_channels
+            self.layers.append(EGNNLayer(in_c, hidden_channels, edge_channels))
+        self.output_mlp = nn.Sequential(
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.ReLU(),
+            nn.Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, data):
+        x, pos, edge_index, edge_attr, batch = data.x, data.pos, data.edge_index, data.edge_attr, data.batch
+        for layer in self.layers:
+            x, pos = layer(x, pos, edge_index, edge_attr)
+        x = global_mean_pool(x, batch)
+        return self.output_mlp(x)

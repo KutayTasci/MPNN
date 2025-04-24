@@ -5,6 +5,10 @@ from torch_geometric.data import Data
 from tqdm import tqdm
 import time
 import torch.profiler
+import yaml
+import matplotlib.pyplot as plt
+import matplotlib
+from sklearn.metrics import accuracy_score, mean_absolute_error
 
 
 
@@ -15,6 +19,7 @@ class Trainer_Base:
         self.loss_fn = loss_fn
         self.device = device
         self.edge_attr = False
+        self.task = model.task
 
     def train(self, data):
         self.model.train()
@@ -38,6 +43,31 @@ class Trainer_Base:
                 out = self.model(data.x.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device), None, data.pos.to(self.device))
             loss = self.loss_fn(out[0], data.y[0])
             return loss.item()
+    def test_accuracy(self, data):
+        self.model.eval()
+        with torch.no_grad():
+            if self.edge_attr:
+                out = self.model(data.x.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device), data.edge_attr.to(self.device), data.pos.to(self.device))
+            else:
+                out = self.model(data.x.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device), None, data.pos.to(self.device))
+
+            preds = out.argmax(dim=1).cpu()
+            targets = data.y.cpu()
+            acc = accuracy_score(targets, preds)
+            return acc
+
+    def test_mae(self, data):
+        self.model.eval()
+        with torch.no_grad():
+            if self.edge_attr:
+                out = self.model(data.x.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device), data.edge_attr.to(self.device), data.pos.to(self.device))
+            else:
+                out = self.model(data.x.to(self.device), data.edge_index.to(self.device), data.batch.to(self.device), None, data.pos.to(self.device))
+
+            preds = out.view(-1).cpu()
+            targets = data.y.view(-1).cpu()
+            mae = mean_absolute_error(targets, preds)
+            return mae
         
 
         
@@ -45,6 +75,7 @@ class Trainer_Base:
 
 
 def Train_Base(models, data_loaders, optimizers, loss_fns, device, epochs=3):
+    matplotlib.use('Agg')  # Use a non-interactive backend (no GUI)
     trainers = []
     training_progress = [] 
     for i in range(len(models)):
@@ -70,7 +101,49 @@ def Train_Base(models, data_loaders, optimizers, loss_fns, device, epochs=3):
                 loss += trainer.train(data)
             training_progress[i].append(loss)
             print(f"Epoch {epoch+1}/{epochs} | Model {i+1}/{len(trainers)} | Loss: {loss:.4f}")
+            # Optional evaluation
+            if test_loader is not None:
+                metric_total = 0
+                count = 0
+                for data in test_loader:
+                    data = data.to(device)
+                    if trainer.task == 'classification':
+                        metric_total += trainer.test_accuracy(data)
+                    else:
+                        metric_total += trainer.test_mae(data)
+                    count += 1
+                metric_avg = metric_total / count
+
+                metric_name = 'Accuracy' if trainer.task == 'classification' else 'MAE'
+                print(f"→ Test {metric_name}: {metric_avg:.4f}")
     
+        #save the custom kernel weights
+        # Access the layer
+        layer = models[0].layers[0].custom_kernel
+
+        # Prepare a dictionary with both weight and bias
+        weights_and_bias = {
+            'weight': layer.weight.tolist(),
+            'bias': layer.bias.tolist() if layer.bias is not None else None
+        }
+
+        # Write to YAML
+        with open('custom_kernel_weights.yaml', 'w') as f:
+            yaml.dump(weights_and_bias, f)
+        
+        #create a directory to save the training progress
+        import os
+        if not os.path.exists('exp'):
+            os.makedirs('exp')
+        #visualize the training progress in separate plots and save them
+        for i in range(len(training_progress)):
+            plt.plot(training_progress[i])
+            plt.title(f"Training Progress Model {i+1}")
+            plt.xlabel("Epoch")
+            plt.ylabel("Loss")
+            plt.savefig(f"exp/training_progress_model_{i+1}.png")
+            plt.clf()
+            
     return training_progress
                 
             

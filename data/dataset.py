@@ -2,6 +2,7 @@ import torch
 from torch_geometric.datasets import QM9, ModelNet, MD17, ZINC, ShapeNet, MoleculeNet, CoMA
 from torch_geometric.transforms import NormalizeFeatures, RadiusGraph, NormalizeScale, BaseTransform
 from torch_geometric.data import Data, DataLoader, Batch
+from torch.utils.data import random_split
 from torch_geometric.utils import one_hot
 from typing import Optional, Callable, Union, List
 import torch_geometric.transforms as T
@@ -10,7 +11,24 @@ from rdkit.Chem import AllChem
 import pandas as pd
 from tqdm import tqdm
 
+class NormalizePos:
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
 
+    def __call__(self, data):
+        data.pos = (data.pos - self.mean) / self.std
+        return data
+
+
+class NormalizeY:
+    def __init__(self, mean, std):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, data):
+        data.y = (data.y - self.mean) / self.std
+        return data
 
 class QM9Dataset:
     def __init__(self, root: str = "data/QM9", transform=None):
@@ -50,11 +68,6 @@ class QM9Dataset:
             self.dataset, [n_train, n_val, n_test]
         )
 
-        # Option 2: Direct slicing (if the dataset is subscriptable)
-        # train_dataset = dataset[:n_train]
-        # val_dataset = dataset[n_train:n_train+n_val]
-        # test_dataset = dataset[n_train+n_val:]
-
         # Create DataLoaders
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True, persistent_workers=True)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, persistent_workers=True)
@@ -62,33 +75,7 @@ class QM9Dataset:
    
         return train_loader, val_loader, test_loader
     
-    def get_full_graphs(self):
-        """
-        Returns the dataset as full graphs for train, validation, and test.
 
-        Returns:
-            tuple: (train_data, val_data, test_data)
-        """
-        n_total = len(self.dataset)
-        train_ratio = 0.8
-        val_ratio = 0.1
-
-        # Compute the number of examples for each split
-        n_train = int(train_ratio * n_total)
-        n_val = int(val_ratio * n_total)
-        n_test = n_total - n_train - n_val
-
-        # Split dataset into full graphs
-        train_dataset = self.dataset[:n_train]
-        val_dataset = self.dataset[n_train:n_train+n_val]
-        test_dataset = self.dataset[n_train+n_val:]
-
-        # Create Batch objects for each split
-        train_data = Batch.from_data_list(train_dataset)
-        val_data = Batch.from_data_list(val_dataset)
-        test_data = Batch.from_data_list(test_dataset)
-
-        return train_data, val_data, test_data
 
     def get_data(self) -> Data:
         """
@@ -98,62 +85,74 @@ class QM9Dataset:
             Data: A single large graph object containing node features, edges, and labels.
         """
         return self.dataset
-    
-    def get_split(self):
-        """
-        Returns train, validation, and test masks.
 
-        Returns:
-            tuple: (train_mask, val_mask, test_mask) boolean masks.
-        """
-        data = self.get_data()
-        return data.train_mask, data.val_mask, data.test_mask
 
 
 class ModelNetDataset:
-    def __init__(self, root: str = 'data/ModelNet', name: str = '10', transform=None):
-        """
-        Initializes the ModelNet dataset.
-
-        Args:
-            root (str): Directory to store the dataset.
-            name (str): The name of the dataset ('10' for ModelNet10, '40' for ModelNet40).
-            transform (callable, optional): Data transformations to apply.
-        """
-        def copy_pos_to_x(data):
-            data.x = data.pos.clone()
-            return data
+    def __init__(self, root: str = 'data/ModelNet', name: str = '10', transform=None, normalize_pos=True):
         self.root = root
         self.name = name
 
-        # Default transform: convert mesh faces to edge indices
-        default_transform = T.FaceToEdge(remove_faces=True)
-        combined_transform = T.Compose([default_transform, copy_pos_to_x])
-        self.transform = transform if transform else combined_transform
+        # Minimal transform to compute stats
+        def copy_pos_to_x(data):
+            data.x = data.pos.clone()
+            return data
 
-        # Load the training and test datasets
+        basic_transform = T.Compose([
+            T.FaceToEdge(remove_faces=False),
+            copy_pos_to_x
+        ])
+
+        # Load with basic transform to compute stats
+        raw_train_dataset = ModelNet(
+            root=self.root,
+            name=self.name,
+            train=True,
+            transform=basic_transform
+        )
+        raw_test_dataset = ModelNet(
+            root=self.root,
+            name=self.name,
+            train=False,
+            transform=basic_transform
+        )
+
+        if normalize_pos:
+            mean, std = self._compute_pos_stats(raw_train_dataset + raw_test_dataset)
+            norm_transform = NormalizePos(mean, std)
+            final_transform = T.Compose([
+                T.FaceToEdge(remove_faces=False),
+                copy_pos_to_x,
+                norm_transform
+            ])
+        else:
+            final_transform = transform if transform else basic_transform
+
+        # Reload datasets with full transform
         self.train_dataset = ModelNet(
             root=self.root,
             name=self.name,
             train=True,
-            transform=self.transform
+            transform=final_transform
         )
-
         self.test_dataset = ModelNet(
             root=self.root,
             name=self.name,
             train=False,
-            transform=self.transform
+            transform=final_transform
         )
 
         self.num_features = self.train_dataset[0].pos.shape[1]
         self.num_classes = int(name)
         self.edge_feature_dim = 0
-        self.task = 'classification'  # or 'regression' based on your task
-
-
+        self.task = 'classification'
         print(self.train_dataset[0])
 
+    def _compute_pos_stats(self, dataset):
+        all_pos = torch.cat([data.pos for data in dataset], dim=0)
+        mean = all_pos.mean(dim=0)
+        std = all_pos.std(dim=0)
+        return mean, std
 
 
     def get_loaders(self, batch_size: int = 32, shuffle: bool = True):
@@ -194,57 +193,87 @@ class MD17Dataset:
         pre_transform: Optional[Callable] = None,
         pre_filter: Optional[Callable] = None,
         force_reload: bool = False,
+        normalize_pos: bool = True,
+        normalize_y: bool = True,
     ):
         """
-        Initializes the MD17 dataset.
-
-        Args:
-            root (str): Directory to store the dataset.
-            name (str): The name of the trajectory to load (e.g., 'aspirin', 'revised aspirin', 'aspirin CCSD').
-            train (bool, optional): Whether to load train or test split (only used for CCSD(T) datasets).
-            transform (Callable, optional): A function to transform the data.
-            pre_transform (Callable, optional): A function to transform the data before saving.
-            pre_filter (Callable, optional): A function to filter the data before saving.
-            force_reload (bool): If True, forces a re-download and re-process of the dataset.
+        Initializes the MD17 dataset with optional per-dataset position normalization.
         """
 
         def add_node_features(data):
-            # One-hot encode the atomic numbers
             atomic_number_features = one_hot(data.z, num_classes=118)
-            # Concatenate the one-hot encoded atomic numbers with the positions
             node_features = torch.cat([atomic_number_features, data.pos], dim=-1)
-            # Assign to the x attribute
             data.x = node_features
             data.y = data.energy.clone()
             return data
 
         self.root = root
         self.name = name
+        self.normalize_pos = normalize_pos
+        self.normalize_y = normalize_y
 
-        # Default transform: build radius-based graphs
-        default_transform = RadiusGraph(r=6.0)
-        combined_transform = T.Compose([default_transform, add_node_features])
-        self.transform = transform if transform else combined_transform
+        # Step 1: Load raw dataset for stat computation
+        basic_transform = T.Compose([
+            RadiusGraph(r=6.0),
+            add_node_features
+        ])
 
-        self.train_dataset = MD17(
+        raw_dataset = MD17(
             root=self.root,
             name=self.name,
-            train=None,
-            transform=self.transform,
+            train=train,
+            transform=basic_transform,
             pre_transform=pre_transform,
             pre_filter=pre_filter,
             force_reload=force_reload
         )
 
-        self.num_features = 118 + 3  # 118 for one-hot encoding + 3 for position coordinates
-        self.num_classes = 1  # Assuming regression task for energy prediction
+        if normalize_pos:
+            mean, std = self._compute_pos_stats(raw_dataset)
+            normalize = NormalizePos(mean, std)
+            
+
+            #self.y_mean, self.y_std = self._compute_y_stats(raw_dataset)
+            #normalize_y = NormalizeY(self.y_mean, self.y_std)
+            self.transform = T.Compose([
+                RadiusGraph(r=6.0),
+                add_node_features,
+                normalize
+            ])
+        else:
+            self.transform = transform if transform else basic_transform
+           
+
+        # Step 2: Reload with transform including normalization
+        self.train_dataset = MD17(
+            root=self.root,
+            name=self.name,
+            train=train,
+            transform=self.transform,
+            pre_transform=pre_transform,
+            pre_filter=pre_filter,
+            force_reload=force_reload
+        )
+        
+
+        self.num_features = 118 + 3  # one-hot(atomic_number) + pos
+        self.num_classes = 1  # regression
         self.edge_feature_dim = 0
-        self.task = 'regression'  # or 'classification' based on your task
+        self.task = 'regression'
 
         print(self.train_dataset[0])
 
+    def _compute_pos_stats(self, dataset):
+        all_pos = torch.cat([data.pos for data in dataset], dim=0)
+        mean = all_pos.mean(dim=0)
+        std = all_pos.std(dim=0)
+        return mean, std
 
-    def get_loaders(self, batch_size: int = 32, shuffle: bool = True, **kwargs):
+    def _compute_y_stats(self, dataset):
+        all_y = torch.cat([data.energy for data in dataset], dim=0)
+        return all_y.mean(), all_y.std()
+
+    def get_loaders(self, batch_size: int = 32, shuffle: bool = True, test_ratio=0.1, **kwargs):
         """
         Returns a DataLoader object for the MD17 dataset.
 
@@ -255,14 +284,28 @@ class MD17Dataset:
         Returns:
             DataLoader: A PyTorch DataLoader object.
         """
-        train_loader =  DataLoader(
-            self.train_dataset,
+        total_len = len(self.train_dataset)
+        test_len = max(1, int(total_len * test_ratio))
+        train_len = total_len - test_len
+
+        train_subset, test_subset = random_split(self.train_dataset, [train_len, test_len])
+
+        train_loader = DataLoader(
+            train_subset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=kwargs.get('num_workers', 0)
         )
 
-        return (train_loader, None, None)
+        test_loader = DataLoader(
+            test_subset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=kwargs.get('num_workers', 0)
+        )
+
+
+        return (train_loader, None, test_loader)
     
 class ZINCGraphDataset:
     def __init__(self, 
@@ -456,57 +499,87 @@ class CoMADataset:
         pre_transform: Optional[Callable] = None,
         pre_filter: Optional[Callable] = None,
         force_reload: bool = False,
+        normalize_pos: bool = True,
     ):
         """
-        Initializes the CoMA dataset.
-
-        Args:
-            root (str): Directory where the dataset should be saved.
-            train (bool): If True, loads the training dataset, otherwise the test dataset.
-            transform (Callable, optional): Transform applied at data access time.
-            pre_transform (Callable, optional): Transform applied once before saving to disk.
-            pre_filter (Callable, optional): Whether to keep a given data object.
-            force_reload (bool): If True, forces re-processing of dataset.
+        Initializes the CoMA dataset with optional position normalization.
         """
+        class SafeFaceToEdge:
+            def __init__(self, remove_faces=False):
+                self.remove_faces = remove_faces
 
+            def __call__(self, data):
+                if hasattr(data, 'face') and data.face is not None:
+                    return T.FaceToEdge(remove_faces=self.remove_faces)(data)
+                return data
         def copy_pos_to_x(data):
-            # Copy the positions to the x attribute
             data.x = data.pos.clone()
             return data
-        
+
         self.root = root
         self.train = train
-        self.transform = transform
-        default_transform = T.FaceToEdge(remove_faces=True)
-        combined_transform = T.Compose([default_transform, copy_pos_to_x])
         self.pre_filter = pre_filter
         self.force_reload = force_reload
 
-        # Load dataset
-        self.train_dataset = CoMA(
+        # Load base dataset without transform to compute pos stats
+        raw_train = CoMA(
             root=self.root,
             train=True,
-            transform=combined_transform,
-            pre_transform=combined_transform,
+            transform=None,
+            pre_transform=T.Compose([T.FaceToEdge(remove_faces=False), copy_pos_to_x]),
+            pre_filter=self.pre_filter,
+            force_reload=self.force_reload
+        )
+        raw_test = CoMA(
+            root=self.root,
+            train=False,
+            transform=None,
+            pre_transform=T.Compose([T.FaceToEdge(remove_faces=False), copy_pos_to_x]),
             pre_filter=self.pre_filter,
             force_reload=self.force_reload
         )
 
+        if normalize_pos:
+            mean, std = self._compute_pos_stats(raw_train + raw_test)
+            normalize = NormalizePos(mean, std)
+            self.transform = T.Compose([
+                SafeFaceToEdge(remove_faces=False),
+                copy_pos_to_x,
+                normalize
+            ])
+        else:
+            self.transform = transform if transform else T.Compose([
+                SafeFaceToEdge(remove_faces=False),
+                copy_pos_to_x
+            ])
+
+        # Load datasets with final transform
+        self.train_dataset = CoMA(
+            root=self.root,
+            train=True,
+            transform=self.transform,
+            pre_transform=None,
+            pre_filter=self.pre_filter,
+            force_reload=self.force_reload
+        )
         self.test_dataset = CoMA(
             root=self.root,
             train=False,
-            transform=combined_transform,
-            pre_transform=combined_transform,
+            transform=self.transform,
+            pre_transform=None,
             pre_filter=self.pre_filter,
             force_reload=self.force_reload
         )
 
         print(self.train_dataset[0].y)
-        self.num_features = self.train_dataset[0].pos.shape[1]  # typically 3 for 3D
-        self.num_classes = 12  # unsupervised mesh data; set manually if needed
-        self.edge_feature_dim = 0  # no edge features by default
-        self.task = 'classification'  # or 'regression' based on your task
+        self.num_features = self.train_dataset[0].pos.shape[1]  # typically 3
+        self.num_classes = 12  # manual label setting
+        self.edge_feature_dim = 0
+        self.task = 'classification'
 
+    def _compute_pos_stats(self, dataset):
+        all_pos = torch.cat([data.pos for data in dataset], dim=0)
+        return all_pos.mean(dim=0), all_pos.std(dim=0)
 
     def get_loaders(self, batch_size: int = 32, shuffle: bool = True):
         """

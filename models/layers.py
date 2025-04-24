@@ -96,3 +96,57 @@ class MPNNLayer(MessagePassing):
             Tensor: Updated node features.
         """
         return F.relu(self.linear_out(torch.cat([x, aggr_out], dim=1)))
+
+
+class EGNNLayer(MessagePassing):
+    def __init__(self, in_channels, out_channels, edge_channels=0, hidden_channels=64, aggr='add'):
+        super(EGNNLayer, self).__init__(aggr=aggr)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * in_channels + edge_channels + 1, hidden_channels),
+            nn.SiLU(),
+            nn.Linear(hidden_channels, hidden_channels),
+            nn.SiLU()
+        )
+        self.coord_mlp = nn.Sequential(
+            nn.Linear(hidden_channels, 1),
+            nn.SiLU()
+        )
+        self.node_mlp = nn.Sequential(
+            nn.Linear(in_channels + hidden_channels, hidden_channels),
+            nn.SiLU(),
+            nn.Linear(hidden_channels, out_channels)
+        )
+
+    def forward(self, x, pos, edge_index, edge_attr=None):
+        """
+        x: Node features (N, F)
+        pos: Node coordinates (N, 3)
+        edge_index: Edge indices (2, E)
+        edge_attr: Edge features (E, D) or None
+        """
+        return self.propagate(edge_index, x=x, pos=pos, edge_attr=edge_attr)
+
+    def message(self, x_i, x_j, pos_i, pos_j, edge_attr):
+        # Compute squared distance
+        diff = pos_i - pos_j
+        radial = torch.sum(diff ** 2, dim=1, keepdim=True)
+
+        # Concatenate features
+        if edge_attr is not None:
+            edge_input = torch.cat([x_i, x_j, radial, edge_attr], dim=1)
+        else:
+            edge_input = torch.cat([x_i, x_j, radial], dim=1)
+
+        e_ij = self.edge_mlp(edge_input)
+        coord_update = diff * self.coord_mlp(e_ij)
+        return {'e_ij': e_ij, 'coord_update': coord_update}
+
+    def aggregate(self, inputs, index, dim_size):
+        e_ij = scatter(inputs['e_ij'], index, dim=0, dim_size=dim_size, reduce=self.aggr)
+        coord_update = scatter(inputs['coord_update'], index, dim=0, dim_size=dim_size, reduce='mean')
+        return {'e_ij': e_ij, 'coord_update': coord_update}
+
+    def update(self, aggr_out, x, pos):
+        h = self.node_mlp(torch.cat([x, aggr_out['e_ij']], dim=1))
+        pos = pos + aggr_out['coord_update']
+        return h, pos

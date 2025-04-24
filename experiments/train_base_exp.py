@@ -25,16 +25,14 @@ def Train_On_MPNN(datasets, batch_size=128):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    learning_rate = 0.001
-    epochs = 3
+    learning_rate = 0.0001
+    epochs = 30
     num_layers = 3
 
-    #print the weights of the custom kernel
-    print(f"Custom kernel weights: {custom_kernel.weight}")
 
     for dataset in datasets:
         data_loaders.append(dataset.get_loaders(batch_size=batch_size, shuffle=True))
-        model = MPNN_GC(custom_kernel, dataset.num_features, dataset.edge_feature_dim, hidden_channels, dataset.num_classes, num_layers=num_layers)
+        model = MPNN_GC(custom_kernel, dataset.num_features, dataset.edge_feature_dim, hidden_channels, dataset.num_classes, num_layers=num_layers, task = dataset.task)
         if dataset.task == 'regression':
             loss_fn = F.mse_loss
         else:
@@ -45,21 +43,22 @@ def Train_On_MPNN(datasets, batch_size=128):
         model = model.to(device)
         models.append(model)
 
-    for model in models:
-        print(f"Model weights: {model.layers[0].custom_kernel.weight}")
 
     training_progress = train.Train_Base(models, data_loaders, optimizers, loss_ls, device, epochs=epochs)
 
-    #print the weights of the custom kernel
-    print(f"Custom kernel weights: {custom_kernel.weight}")
 
-    #print the weights of the custom kernel in the model
-    for model in models:
-        print(f"Model weights: {model.layers[0].custom_kernel.weight}")
+    # Access the layer
+    layer = custom_kernel
 
-    #save the custom kernel weights
+    # Prepare a dictionary with both weight and bias
+    weights_and_bias = {
+        'weight': layer.weight.tolist(),
+        'bias': layer.bias.tolist() if layer.bias is not None else None
+    }
+
+    # Write to YAML
     with open('custom_kernel_weights.yaml', 'w') as f:
-        yaml.dump(custom_kernel.weight.tolist(), f)
+        yaml.dump(weights_and_bias, f)
     
     #create a directory to save the training progress
     import os
@@ -76,18 +75,22 @@ def Train_On_MPNN(datasets, batch_size=128):
 
 def TrainBase():
     # Load dataset  
-    
+    print('Training started', flush=True)
     model_net_10 = ModelNetDataset(root='data/ModelNet', name='10')
+    print('Dataset_loaded..', flush=True)
  
-    #model_net_40 = ModelNetDataset(root='data/ModelNet', name='40')
-
-    #md17_aspirin = MD17Dataset(root='data/MD17', name='aspirin')
-    #md17_ethanol = MD17Dataset(root='data/MD17', name='ethanol')
-    #md17_benzene = MD17Dataset(root='data/MD17', name='benzene')
+    model_net_40 = ModelNetDataset(root='data/ModelNet', name='40')
+    print('Dataset_loaded..', flush=True)
+    md17_aspirin = MD17Dataset(root='data/MD17', name='aspirin')
+    print('Dataset_loaded..', flush=True)
+    md17_ethanol = MD17Dataset(root='data/MD17', name='ethanol')
+    print('Dataset_loaded..', flush=True)
+    md17_benzene = MD17Dataset(root='data/MD17', name='benzene')
+    print('Dataset_loaded..', flush=True)
 
     coma = CoMADataset(root='data/CoMA')
+    print('Dataset_loaded..', flush=True)
 
-    #Train_On_MPNN([model_net_10, model_net_40, md17_aspirin, md17_ethanol, md17_benzene, coma], batch_size=4)
-    Train_On_MPNN([model_net_10, coma], batch_size=16)
 
-    
+    Train_On_MPNN([model_net_10, model_net_40, md17_aspirin, md17_ethanol, md17_benzene, coma], batch_size=16)
+    #Train_On_MPNN([coma], batch_size=128)
