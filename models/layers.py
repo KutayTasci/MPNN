@@ -2,6 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch.nn import Linear
 from torch_geometric.nn import MessagePassing
+import torch.nn as nn
+from torch_geometric.utils import scatter
 
 import torch
 import torch.nn.functional as F
@@ -99,11 +101,20 @@ class MPNNLayer(MessagePassing):
 
 
 class EGNNLayer(MessagePassing):
-    def __init__(self, in_channels, out_channels, edge_channels=0, hidden_channels=64, aggr='add'):
+    def __init__(self, in_channels, out_channels, edge_channels=0, hidden_channels=64, aggr='add', custom_kernel=None):
         super(EGNNLayer, self).__init__(aggr=aggr)
+
+
+        self.src_linear = Linear(in_channels, hidden_channels)
+        self.dst_linear = Linear(in_channels, hidden_channels)
+        self.edge_linear = Linear(edge_channels, hidden_channels) if edge_channels > 0 else None
+        self.activation = nn.SiLU()
+        if custom_kernel is not None:
+            self.geometric_linear = custom_kernel
+        else:
+            self.geometric_linear = Linear(1, hidden_channels)
+
         self.edge_mlp = nn.Sequential(
-            nn.Linear(2 * in_channels + edge_channels + 1, hidden_channels),
-            nn.SiLU(),
             nn.Linear(hidden_channels, hidden_channels),
             nn.SiLU()
         )
@@ -133,11 +144,21 @@ class EGNNLayer(MessagePassing):
 
         # Concatenate features
         if edge_attr is not None:
-            edge_input = torch.cat([x_i, x_j, radial, edge_attr], dim=1)
+            src = self.src_linear(x_i)
+            dst = self.dst_linear(x_j)
+            edge = self.edge_linear(edge_attr)
+            g_dist = self.geometric_linear(radial)
+            #sum the results and use silu activation
+            edge_res = src + dst + edge + g_dist
+            edge_res = self.activation(edge_res)
         else:
-            edge_input = torch.cat([x_i, x_j, radial], dim=1)
+            src = self.src_linear(x_i)
+            dst = self.dst_linear(x_j)
+            g_dist = self.geometric_linear(radial)
+            edge_res = src + dst + g_dist
+            edge_res = self.activation(edge_res)
 
-        e_ij = self.edge_mlp(edge_input)
+        e_ij = self.edge_mlp(edge_res)
         coord_update = diff * self.coord_mlp(e_ij)
         return {'e_ij': e_ij, 'coord_update': coord_update}
 

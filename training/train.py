@@ -9,6 +9,7 @@ import yaml
 import matplotlib.pyplot as plt
 import matplotlib
 from sklearn.metrics import accuracy_score, mean_absolute_error
+import os
 
 
 
@@ -70,7 +71,39 @@ class Trainer_Base:
             return mae
         
 
-        
+class Trainer_EGNN:
+    def __init__(self, model, optimizer, loss_fn, device, target=0):
+        self.model = model
+        self.optimizer = optimizer
+        self.loss_fn = loss_fn
+        self.device = device
+        self.task = model.task
+        self.target = target
+
+    def train(self, data):
+        self.model.train()
+        self.optimizer.zero_grad()
+        out = self.model(data)
+        #calculate the loss on target column
+        loss = self.loss_fn(out.view(-1), data.y[:, self.target])
+        loss.backward()
+        self.optimizer.step()
+        return loss.item()
+
+    def test(self, data):
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(data)
+            loss = self.loss_fn(out, data.y[:, self.target])
+            return loss.item()
+    def test_mae(self, data):
+        self.model.eval()
+        with torch.no_grad():
+            out = self.model(data)
+            preds = out.view(-1).cpu()
+            targets = data.y[:, self.target].view(-1).cpu()
+            mae = mean_absolute_error(targets, preds)
+            return mae
         
 
 
@@ -147,26 +180,71 @@ def Train_Base(models, data_loaders, optimizers, loss_fns, device, epochs=3):
     return training_progress
                 
             
+def Train_EGNN(model, dataloader, optimizer, loss_fn, device, epochs=3, target=0):
+    """
+    Train the EGNN model.
+    
+    Args:
+        model: The EGNN model.
+        dataloader: DataLoader for training data.
+        optimizer: Optimizer for the model.
+        loss_fn: Loss function.
+        device: Device to train on (CPU or GPU).
+        epochs: Number of training epochs.
+    """
+    train_loss = []
+    val_loss = []
+    test_loss = []
+
+    val_mae = []
+    test_mae = []
+
+    # Create a directory to save the training progress
+    if not os.path.exists('exp_EGNN'):
+        os.makedirs('exp_EGNN')
+
+    train_loader, val_loader, test_loader = dataloader
+    trainer = Trainer_EGNN(model, optimizer, loss_fn, device, target=target)
+    for epoch in range(epochs):
+        
+        loss = 0
+        for data in tqdm(train_loader, desc="Training", leave=False):
+            data = data.to(device)
+            loss += trainer.train(data)
+        train_loss.append(loss)
+        print(f"Epoch {epoch+1}/{epochs} | Loss: {loss:.4f}")
+        # Optional evaluation
+        if val_loader is not None:
+            metric_total = 0
+            count = 0
+            for data in val_loader:
+                data = data.to(device)
+                metric_total += trainer.test_mae(data)
+                count += 1
+            metric_avg = metric_total / count
+
+            metric_name = 'Accuracy' if trainer.task == 'classification' else 'MAE'
+            val_loss.append(metric_avg)
+            print(f"→ Validation {metric_name}: {metric_avg:.4f}")
+            val_mae.append(metric_avg)
+
+    if test_loader is not None:
+        metric_total = 0
+        count = 0
+        for data in test_loader:
+            data = data.to(device)
+            metric_total += trainer.test_mae(data)
+            count += 1
+        metric_avg = metric_total / count
+
+        metric_name = 'Accuracy' if trainer.task == 'classification' else 'MAE'
+        print(f"→ Test {metric_name}: {metric_avg:.4f}")
+        test_loss.append(metric_avg)
+        test_mae.append(metric_avg)
+    
+    #create a tuple to save the training progress
+    training_progress = (train_loss, val_loss, test_loss, val_mae, test_mae)
+    return training_progress
 
 
 
-
-
-'''
-train_set.to(device)
-test_set.to(device)
-trainer = Trainer_ModelNet(model, optimizer, loss_fn, device)
-if benchmark:
-    start = time.time()
-
-for epoch in range(epochs):
-    loss = trainer.train(train_set)
-    if not benchmark:
-        test_loss = trainer.test(test_set)
-        print(f"Epoch {epoch+1:03d} | Loss: {loss:.4f} | Test Loss: {test_loss:.4f}")
-if benchmark:
-    end = time.time()
-    print(f"Training Time: {end-start:.4f} seconds")
-    #print(f"Final Test Accuracy: {test_acc:.4f}")
-    print(f"Troughput: {epochs/(end-start):.3f} epoch/sec")
-'''

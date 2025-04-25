@@ -2,6 +2,7 @@ import torch
 from torch_geometric.datasets import QM9, ModelNet, MD17, ZINC, ShapeNet, MoleculeNet, CoMA
 from torch_geometric.transforms import NormalizeFeatures, RadiusGraph, NormalizeScale, BaseTransform
 from torch_geometric.data import Data, DataLoader, Batch
+from sklearn.preprocessing import StandardScaler
 from torch.utils.data import random_split
 from torch_geometric.utils import one_hot
 from typing import Optional, Callable, Union, List
@@ -30,60 +31,60 @@ class NormalizeY:
         data.y = (data.y - self.mean) / self.std
         return data
 
-class QM9Dataset:
-    def __init__(self, root: str = "data/QM9", transform=None):
-        """
-        Initializes the QM9 dataset.
+class NormalizeX(BaseTransform):
+    def __call__(self, data: Data) -> Data:
+        if hasattr(data, 'x') and self.mean is not None and self.std is not None:
+            data.x = (data.x - self.mean) / self.std
+        return data
 
-        Args:
-            root (str): Directory to store the dataset.
-            transform (callable, optional): Data transformations to apply (e.g., normalization).
+    def fit(self, dataset):
+        xs = [data.x for data in dataset]
+        x_all = torch.cat(xs, dim=0).numpy()
+        scaler = StandardScaler().fit(x_all)
+        self.mean = torch.tensor(scaler.mean_, dtype=torch.float)
+        self.std = torch.tensor(scaler.scale_, dtype=torch.float)
+        return self
+
+class QM9Dataset:
+    def __init__(self, root: str = "data/QM9"):
+        """
+        Initializes the QM9 dataset with normalized node features x.
         """
         self.root = root
-        self.transform = transform if transform else NormalizeFeatures()
-        self.dataset = QM9(root=self.root, transform=self.transform)
+        # Temporarily load the dataset without transform to compute normalization stats
+        raw_dataset = QM9(root=self.root)
+        #self.normalizer = NormalizeX().fit(raw_dataset)
+        self.dataset = QM9(root=self.root)
+        
+        self.num_features = self.dataset[0].x.shape[1]
+        self.num_classes = 1  # Regression task
+        self.edge_feature_dim = self.dataset[0].edge_attr.shape[1] if self.dataset[0].edge_attr is not None else 0
+        self.task = 'regression'
+        print(self.dataset[0])
 
-    def get_loader(self, batch_size: int = 32, shuffle: bool = True, **kwargs):
+    def get_loaders(self, batch_size: int = 32, shuffle: bool = True, **kwargs):
         """
-        Returns a DataLoader object for the QM9 dataset. For training, validation, and testing, use the train_mask, val_mask, and test_mask attributes of the Data object.
-
-        Args:
-            batch_size (int): Number of graphs in each batch.
-            shuffle (bool): Whether to shuffle the dataset.
-
-        Returns:
-            DataLoader: A PyTorch DataLoader object.
+        Returns DataLoaders for train, val, test.
         """
         n_total = len(self.dataset)
         train_ratio = 0.8
         val_ratio = 0.1
 
-        # Compute the number of examples for each split
         n_train = int(train_ratio * n_total)
         n_val = int(val_ratio * n_total)
         n_test = n_total - n_train - n_val
 
-        # Option 1: Using torch.utils.data.random_split
         train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(
             self.dataset, [n_train, n_val, n_test]
         )
 
-        # Create DataLoaders
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True, persistent_workers=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, persistent_workers=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True, persistent_workers=True)
-   
-        return train_loader, val_loader, test_loader
-    
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True, persistent_workers=True)
 
+        return train_loader, val_loader, test_loader
 
     def get_data(self) -> Data:
-        """
-        Returns the graph data object.
-
-        Returns:
-            Data: A single large graph object containing node features, edges, and labels.
-        """
         return self.dataset
 
 
