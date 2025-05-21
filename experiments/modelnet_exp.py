@@ -31,7 +31,7 @@ def Train_On_MPNN(benchmark, dataset, model_type='cat', batch_size=128, no_class
 
     # Get DataLoader objects
     train_loader, test_loader = dataset.get_loaders(batch_size=batch_size)
-    train_set, test_set = dataset.get_full_graphs()
+    #train_set, test_set = dataset.get_full_graphs()
     in_channels = dataset.train_dataset[0].pos.shape[1]
     hidden_channels = cfg["hidden_channels"]
     out_channels = 10
@@ -47,9 +47,9 @@ def Train_On_MPNN(benchmark, dataset, model_type='cat', batch_size=128, no_class
     # Initialize Model
     model = MPNN_ModelNet(in_channels, edge_channels, hidden_channels, out_channels, num_layers, mode=model_type).to(device)
     optimizer = Adam(model.parameters(), lr=learning_rate)
-
-    #train.Train_ModelNet(model, (train_loader, test_loader), optimizer, F.cross_entropy, device, epochs=epochs, benchmark=benchmark)
-    train.Train_ModelNet_FB(model, (train_set, test_set), optimizer, F.cross_entropy, device, epochs=epochs, benchmark=benchmark)
+    compiled_model = torch.compile(model)
+    train.Train_ModelNet(compiled_model, (train_loader, test_loader), optimizer, F.cross_entropy, device, epochs=epochs, benchmark=benchmark)
+    #train.Train_ModelNet_FB(model, (train_set, test_set), optimizer, F.cross_entropy, device, epochs=epochs, benchmark=benchmark)
 
 
 def ModelNetExperiment(benchmark=False, model_type='cat', batch_size=128, no_classes=40):

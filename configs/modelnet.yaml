@@ -1,6 +1,6 @@
 hidden_channels: 64
 num_layers: 2
-epochs: 3
+epochs: 10
 learning_rate: 0.003
 optimizer: adam
 loss: MSELoss

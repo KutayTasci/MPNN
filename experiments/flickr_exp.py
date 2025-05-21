@@ -27,8 +27,8 @@ def Train_On_MPNN(data, benchmark, model_type='cat'):
 
     # Move data to device
     data = data.to(device)
-
-    train.Train_Flickr(model, data, optimizer, F.cross_entropy, device, epochs=epochs, benchmark=benchmark)
+    compiled_model = torch.compile(model)
+    train.Train_Flickr(compiled_model, data, optimizer, F.cross_entropy, device, epochs=epochs, benchmark=benchmark)
     
 
 def FlickrExperiment(benchmark=False, model_type='cat'):
