@@ -17,4 +17,8 @@ data/*
 !data/
 
 # Include only the dataset.py file
-!data/dataset.py
+!data/fake_dataset.py
+!data/MD17_dataset.py
+!data/ModelNet_dataset.py
+!data/ppi_dataset.py
+!data/QM9_dataset.py

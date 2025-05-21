@@ -1,17 +1,14 @@
-import experiments.qm9_exp as qm9_exp
-import experiments.flickr_exp as flickr_exp
-import experiments.s3dis_exp as s3dis_exp
-import experiments.modelnet_exp as modelnet_exp
-import torch.profiler
 
-#flickr_exp.FlickrExperiment(benchmark=True, model_type='sum')
-#flickr_exp.FlickrExperiment(benchmark=True, model_type='cat')
+import experiments.test_experiment as test_exp
+import logging
+logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERROR)
 
-#qm9_exp.QM9Experiment(benchmark=True, model_type='cat', batch_size=64)
-#qm9_exp.QM9Experiment(benchmark=True, model_type='sum', batch_size=64)
+test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=1)
+test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=1)
 
-modelnet_exp.ModelNetExperiment(benchmark=True, model_type='cat', batch_size=8)
-modelnet_exp.ModelNetExperiment(benchmark=True, model_type='sum', batch_size=8)
+test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=1)
+test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=1)
+
 
 
 
