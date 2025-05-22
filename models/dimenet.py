@@ -13,15 +13,15 @@ class DimeNetLayerSum(MessagePassing):
         super(DimeNetLayerSum, self).__init__(aggr='add')
 
 
-        self.second_node_mlp = nn.Linear(in_channels, hidden_channels)
-        self.rbf_mlp = nn.Linear(num_rbf, hidden_channels)
-        self.cbf_mlp = nn.Linear(num_cbf, hidden_channels)
+        self.second_node_mlp = nn.Linear(in_channels, hidden_channels, bias=False)
+        self.rbf_mlp = nn.Linear(num_rbf, hidden_channels, bias=False)
+        self.cbf_mlp = nn.Linear(num_cbf, hidden_channels, bias=False)
 
         self.edge_mlp_activation = nn.ReLU()
 
         
-        self.first_node_mlp = nn.Linear(in_channels, hidden_channels)
-        self.aggregate_mlp = nn.Linear(hidden_channels, hidden_channels)
+        self.first_node_mlp = nn.Linear(in_channels, hidden_channels, bias=False)
+        self.aggregate_mlp = nn.Linear(hidden_channels, hidden_channels, bias=False)
 
         self.edge_mlp_activation_2 = nn.ReLU()
         
@@ -85,13 +85,13 @@ class DimeNetLayerCat(MessagePassing):
 
 
         self.edge_mlp = nn.Sequential(
-            nn.Linear(in_channels + num_rbf + num_cbf, hidden_channels),
+            nn.Linear(in_channels + num_rbf + num_cbf, hidden_channels, bias=False),
             nn.ReLU()
         )
 
 
         self.edge_mlp_2 = nn.Sequential(
-            nn.Linear(hidden_channels + in_channels, hidden_channels),
+            nn.Linear(hidden_channels + in_channels, hidden_channels, bias=False),
             nn.ReLU()
         )
 
