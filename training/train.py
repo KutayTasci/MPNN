@@ -45,6 +45,7 @@ def Train_GraphClassification(model, data_loader, optimizer, loss_fn, device, ep
     comp_time = 0
     if benchmark:
         start = time.time()
+        torch.cuda.reset_peak_memory_stats()
     for epoch in tqdm(range(epochs), desc="Training", unit="epoch"):
         loss = 0
         for data in train_loader:
@@ -66,8 +67,10 @@ def Train_GraphClassification(model, data_loader, optimizer, loss_fn, device, ep
 
     if benchmark:
         end = time.time()
+        peak_memory = torch.cuda.max_memory_allocated() / 1e6
         print(f"Training Time: {end-start:.4f} seconds")
         print(f"Computation Time: {comp_time:.4f} seconds")
+        print(f"Peak memory usage: {peak_memory:.2f} MB")
         #print(f"Final Test Accuracy: {test_acc:.4f}")
         print(f"Troughput: {epochs/(end-start):.3f} epoch/sec")
         print(f"Computation Troughput: {epochs/comp_time:.4f} seconds")

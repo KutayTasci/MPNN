@@ -116,6 +116,7 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     dataset = PPI_Dataset(dimenet=True)  
     #dataset = Fake_Dataset(dimenet=True,num_graphs=1000, num_nodes=100, avg_degree=100)
 
+
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)
     # Train EGNN
