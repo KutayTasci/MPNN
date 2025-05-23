@@ -112,8 +112,8 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     #dataset = QM9Dataset()
     #dataset = MD17Dataset(name='aspirin', dimenet=True)
     #dataset = ModelNetDataset(dimenet=True)
-    #dataset = PPI_Dataset(dimenet=True)  
-    dataset = Fake_Dataset(num_graphs=1000, num_nodes=100, avg_degree=100)
+    dataset = PPI_Dataset()  
+    #dataset = Fake_Dataset(num_graphs=1000, num_nodes=100, avg_degree=100)
 
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)
