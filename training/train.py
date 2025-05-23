@@ -20,7 +20,6 @@ class Trainer:
         self.model.train()
         self.optimizer.zero_grad()
         out = self.model(data)
-
         loss = self.loss_fn(out, data.y)
         loss.backward()
         self.optimizer.step()

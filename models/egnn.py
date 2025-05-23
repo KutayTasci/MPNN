@@ -176,8 +176,11 @@ class EGNN(nn.Module):
         
         for layer in self.layers:
             x, pos = layer(x, pos, edge_index, edge_attr)
+        
         if batch is not None:
-            x = global_mean_pool(x, data.batch)
+            # Manual mean pooling to avoid symbolic shape errors
+            x = scatter(x, batch, dim=0, reduce='mean')
+        
         if self.task == 'regression':
             x = F.relu(x)
         elif self.task == 'classification':

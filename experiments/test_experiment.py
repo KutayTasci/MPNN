@@ -37,10 +37,10 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128):
     # Initialize Model
     model = EGNN(in_channels, edge_channels, hidden_channels, out_channels,mode=model_type, num_layers=num_layers, task="regression").to(device)
     # compile the model with torch.compile(backend='inductor')
-    #model = torch.compile(model, backend='inductor')
-    #torch._dynamo.config.capture_scalar_outputs = True
-    #torch._dynamo.config.suppress_errors = True
-    #torch.set_float32_matmul_precision('high')
+    torch._dynamo.config.capture_scalar_outputs = True
+    torch._dynamo.config.suppress_errors = True
+    model = torch.compile(model, backend='inductor', dynamic=True)  
+    torch.set_float32_matmul_precision('high')
     optimizer = Adam(model.parameters(), lr=learning_rate)
     
     # Train EGNN
@@ -110,14 +110,14 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     
     # Load dataset  
     #dataset = QM9Dataset()
-    dataset = MD17Dataset(name='aspirin', dimenet=True)
+    #dataset = MD17Dataset(name='aspirin', dimenet=True)
     #dataset = ModelNetDataset(dimenet=True)
     #dataset = PPI_Dataset(dimenet=True)  
-    #dataset = Fake_Dataset(dimenet=True, num_graphs=1000, num_nodes=100, avg_degree=100)
+    dataset = Fake_Dataset(num_graphs=1000, num_nodes=100, avg_degree=100)
 
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)
     # Train EGNN
-    #Train_On_EGNN(benchmark, dataset, model_type=model_type, batch_size=batch_size)
-    Train_On_DimeNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
+    Train_On_EGNN(benchmark, dataset, model_type=model_type, batch_size=batch_size)
+    #Train_On_DimeNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
     #Train_On_GemNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
