@@ -49,9 +49,9 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128):
 def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
     cfg = {
         "hidden_channels": 64,
-        "num_layers": 2,
+        "num_layers": 7,
         "learning_rate": 0.0001,
-        "epochs": 3
+        "epochs": 10
     }
     
     train_loader, val_loader, test_loader = dataset.get_loaders(batch_size=batch_size, shuffle=True)
@@ -69,10 +69,13 @@ def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
     
     # Initialize Model
     model = DimeNet(in_channels, hidden_channels, out_channels, num_layers=num_layers, task="regression", mode=model_type).to(device)
-    #model = torch.compile(model, backend='inductor')
-    #torch._dynamo.config.capture_scalar_outputs = True
+    # compile the model with torch.compile(backend='inductor')
+    torch._dynamo.config.capture_scalar_outputs = True
+    torch._dynamo.config.suppress_errors = True
+    model = torch.compile(model, backend='inductor', dynamic=True)  
+    torch.set_float32_matmul_precision('high')
     
-    #torch.set_float32_matmul_precision('high')
+    torch.set_float32_matmul_precision('high')
     optimizer = Adam(model.parameters(), lr=learning_rate)
     
     # Train EGNN
@@ -112,12 +115,12 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     #dataset = QM9Dataset()
     #dataset = MD17Dataset(name='aspirin', dimenet=True)
     #dataset = ModelNetDataset(dimenet=True)
-    dataset = PPI_Dataset()  
-    #dataset = Fake_Dataset(num_graphs=1000, num_nodes=100, avg_degree=100)
+    #dataset = PPI_Dataset()  
+    dataset = Fake_Dataset(dimenet=True, num_graphs=1000, num_nodes=50, avg_degree=50)
 
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)
     # Train EGNN
-    Train_On_EGNN(benchmark, dataset, model_type=model_type, batch_size=batch_size)
-    #Train_On_DimeNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
+    #Train_On_EGNN(benchmark, dataset, model_type=model_type, batch_size=batch_size)
+    Train_On_DimeNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
     #Train_On_GemNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)

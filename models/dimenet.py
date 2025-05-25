@@ -183,7 +183,9 @@ class DimeNet(nn.Module):
         for layer in self.layers:
             x = layer(x, edge_index, edge_attr, triplet_info, rbf=rbf)
 
-        x = global_mean_pool(x, batch)
+        if batch is not None:
+            # Manual mean pooling to avoid symbolic shape errors
+            x = scatter(x, batch, dim=0, reduce='mean')
 
         if self.task == 'regression':
             x = F.relu(x)
