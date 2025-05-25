@@ -44,24 +44,24 @@ class DimeNetLayerSum(MessagePassing):
         """
         self.triplet_info = triplet_info
 
-        x_second = self.second_node_mlp(x)  # [N, H]
-        x_rbf = self.rbf_mlp(rbf)
-        x_cbf = self.cbf_mlp(self.triplet_info['cbf'])
+        self.x_second = self.second_node_mlp(x)  # [N, H]
+        self.rbf = self.rbf_mlp(rbf)
+        self.cbf = self.cbf_mlp(self.triplet_info['cbf'])
 
         x_first = self.first_node_mlp(x)  # [N, H]
         
-        return self.propagate(edge_index, x=x, y = x_second, z = x_first, x_rbf=x_rbf, x_cbf=x_cbf)
+        return self.propagate(edge_index, x=x, z = x_first)
 
-    def message(self, y, z_j, x_rbf, x_cbf, index):
+    def message(self, z_j, index):
         # Triplet data: k → j → i
         k, j, i = self.triplet_info['k_idx'], self.triplet_info['j_idx'], self.triplet_info['i_idx']
 
 
-        m_kj = y[k]  # [T, F]
-        rbf_feat = x_rbf[j]  # [T, R]
+        m_kj = self.x_second[k]  # [T, F]
+        rbf_feat = self.rbf[j]  # [T, R]
         
         #m_kji = torch.cat([m_kj, rbf_feat, cbf_feat], dim=-1)  # [T, F+R+C]
-        edge_message = self.edge_mlp_activation(torch.add(torch.add(m_kj, rbf_feat), x_cbf))  # [T, H]
+        edge_message = self.edge_mlp_activation(m_kj + rbf_feat+ self.cbf)  # [T, H]
 
         # Aggregate over j to get final message for each edge j→i
         aggregated = torch.zeros_like(z_j)
@@ -84,16 +84,12 @@ class DimeNetLayerCat(MessagePassing):
         super(DimeNetLayerCat, self).__init__(aggr='add')
 
 
-        self.edge_mlp = nn.Sequential(
-            nn.Linear(in_channels + num_rbf + num_cbf, hidden_channels, bias=False),
-            nn.ReLU()
-        )
+        self.edge_mlp = nn.Linear(in_channels + num_rbf + num_cbf, hidden_channels, bias=False)
+        self.edge_mlp_act = nn.ReLU()
 
 
-        self.edge_mlp_2 = nn.Sequential(
-            nn.Linear(hidden_channels + in_channels, hidden_channels, bias=False),
-            nn.ReLU()
-        )
+        self.edge_mlp_2 = nn.Linear(hidden_channels + in_channels, hidden_channels, bias=False)
+        self.edge_mlp_2_act = nn.ReLU()
 
         self.node_mlp = nn.Sequential(
             nn.Linear(in_channels + hidden_channels, hidden_channels),
@@ -127,7 +123,7 @@ class DimeNetLayerCat(MessagePassing):
         cbf_feat = self.triplet_info['cbf']  # [T, C]
         
         m_kji = torch.cat([m_kj, rbf_feat, cbf_feat], dim=-1)  # [T, F+R+C]
-        edge_message = self.edge_mlp(m_kji)  # [T, H]
+        edge_message = self.edge_mlp_act(self.edge_mlp(m_kji))  # [T, H]
 
         # Aggregate over j to get final message for each edge j→i
         aggregated = torch.zeros_like(x_j)
@@ -136,7 +132,7 @@ class DimeNetLayerCat(MessagePassing):
         # Combine with original message
         final_input = torch.cat([x_j, aggregated[index]], dim=-1)
         
-        final_input = self.edge_mlp_2(final_input)  # [E, H]
+        final_input = self.edge_mlp_2_act(self.edge_mlp_2(final_input))  # [E, H]
 
         return final_input
 
@@ -184,8 +180,10 @@ class DimeNet(nn.Module):
             x = layer(x, edge_index, edge_attr, triplet_info, rbf=rbf)
 
         if batch is not None:
-            # Manual mean pooling to avoid symbolic shape errors
-            x = scatter(x, batch, dim=0, reduce='mean')
+            # Manually compute dim_size to avoid data-dependent guard errors
+            dim_size = int(batch.max().item()) + 1
+            x = scatter(x, batch, dim=0, dim_size=dim_size, reduce='mean')
+
 
         if self.task == 'regression':
             x = F.relu(x)

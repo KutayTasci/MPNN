@@ -74,8 +74,7 @@ def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
     torch._dynamo.config.suppress_errors = True
     model = torch.compile(model, backend='inductor', dynamic=True)  
     torch.set_float32_matmul_precision('high')
-    
-    torch.set_float32_matmul_precision('high')
+
     optimizer = Adam(model.parameters(), lr=learning_rate)
     
     # Train EGNN
@@ -113,10 +112,11 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     
     # Load dataset  
     #dataset = QM9Dataset()
-    #dataset = MD17Dataset(name='aspirin', dimenet=True)
+    #dataset = MD17Dataset(name='aspirin')
     #dataset = ModelNetDataset(dimenet=True)
     #dataset = PPI_Dataset()  
     dataset = Fake_Dataset(dimenet=True, num_graphs=1000, num_nodes=50, avg_degree=50)
+
 
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)

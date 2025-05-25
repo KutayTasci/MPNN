@@ -8,6 +8,9 @@ from torch_geometric.nn import global_mean_pool
 from torch_scatter import scatter
 
 
+@torch._dynamo.disable()
+def safe_scatter_mean(x, index, dim=0, dim_size=None):
+    return scatter_mean(x, index, dim=dim, dim_size=dim_size)
 
 def add_rows_by_mapping(A, B, mapping):
     """
@@ -178,8 +181,9 @@ class EGNN(nn.Module):
             x, pos = layer(x, pos, edge_index, edge_attr)
         
         if batch is not None:
-            # Manual mean pooling to avoid symbolic shape errors
-            x = scatter(x, batch, dim=0, reduce='mean')
+            # Manually compute dim_size to avoid data-dependent guard errors
+            dim_size = int(batch.max().item()) + 1
+            x = scatter(x, batch, dim=0, dim_size=dim_size, reduce='mean')
         
         if self.task == 'regression':
             x = F.relu(x)
