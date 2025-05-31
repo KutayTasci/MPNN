@@ -5,7 +5,7 @@ from torch_geometric.data import Data
 from models.egnn import EGNN
 from models.dimenet import DimeNet
 from models.gemnet import GemNet
-from data.QM9_dataset import QM9Dataset
+from data.QM9_dataset import QM9Dataset, QM9DatasetOriginal
 from data.MD17_dataset import MD17Dataset
 from data.ModelNet_dataset import ModelNetDataset
 from data.fake_dataset import Fake_Dataset
@@ -37,10 +37,10 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128):
     # Initialize Model
     model = EGNN(in_channels, edge_channels, hidden_channels, out_channels,mode=model_type, num_layers=num_layers, task="regression").to(device)
     # compile the model with torch.compile(backend='inductor')
-    torch._dynamo.config.capture_scalar_outputs = True
-    torch._dynamo.config.suppress_errors = True
-    model = torch.compile(model, backend='inductor', dynamic=True)  
-    torch.set_float32_matmul_precision('high')
+    #torch._dynamo.config.capture_scalar_outputs = True
+    #torch._dynamo.config.suppress_errors = True
+    #model = torch.compile(model, backend='inductor', dynamic=True, mode="reduce-overhead")  
+    #torch.set_float32_matmul_precision('high')
     optimizer = Adam(model.parameters(), lr=learning_rate)
     
     # Train EGNN
@@ -49,7 +49,7 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128):
 def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
     cfg = {
         "hidden_channels": 64,
-        "num_layers": 7,
+        "num_layers": 4,
         "learning_rate": 0.0001,
         "epochs": 10
     }
@@ -70,9 +70,9 @@ def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
     # Initialize Model
     model = DimeNet(in_channels, hidden_channels, out_channels, num_layers=num_layers, task="regression", mode=model_type).to(device)
     # compile the model with torch.compile(backend='inductor')
-    torch._dynamo.config.capture_scalar_outputs = True
-    torch._dynamo.config.suppress_errors = True
-    model = torch.compile(model, backend='inductor', dynamic=True)  
+    #torch._dynamo.config.capture_scalar_outputs = True
+    #torch._dynamo.config.suppress_errors = True
+    #model = torch.compile(model, backend='inductor', dynamic=True)  
     torch.set_float32_matmul_precision('high')
 
     optimizer = Adam(model.parameters(), lr=learning_rate)
@@ -83,7 +83,7 @@ def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
 def Train_On_GemNet(benchmark, dataset, model_type='cat', batch_size=128):
     cfg = {
         "hidden_channels": 64,
-        "num_layers": 7,
+        "num_layers": 2,
         "learning_rate": 0.0001,
         "epochs": 1000
     }
@@ -112,15 +112,19 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     
     # Load dataset  
     #dataset = QM9Dataset()
+    #dataset = QM9DatasetOriginal()
     #dataset = MD17Dataset(name='aspirin')
     #dataset = ModelNetDataset(dimenet=True)
     #dataset = PPI_Dataset()  
-    dataset = Fake_Dataset(dimenet=True, num_graphs=1000, num_nodes=50, avg_degree=50)
+    dataset = Fake_Dataset(dimenet=True, num_graphs=32, num_nodes=100, avg_degree=80)
+
 
 
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)
     # Train EGNN
-    #Train_On_EGNN(benchmark, dataset, model_type=model_type, batch_size=batch_size)
-    Train_On_DimeNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
+    #Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=batch_size)
+    #Train_On_EGNN(benchmark, dataset, model_type='sum', batch_size=batch_size)
+    Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=batch_size)
+    Train_On_DimeNet(benchmark, dataset, model_type='sum', batch_size=batch_size)
     #Train_On_GemNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)

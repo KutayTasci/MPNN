@@ -7,31 +7,31 @@ from torch_geometric.utils import scatter
 from torch_geometric.nn import global_mean_pool
 from torch_scatter import scatter
 
+from torch.autograd import Function
+from torch.utils.cpp_extension import load
 
-@torch._dynamo.disable()
-def safe_scatter_mean(x, index, dim=0, dim_size=None):
-    return scatter_mean(x, index, dim=dim, dim_size=dim_size)
 
-def add_rows_by_mapping(A, B, mapping):
-    """
-    Adds rows from tensor A to tensor B based on the provided mapping.
 
-    Args:
-        A (Tensor): Source tensor of shape (m, k).
-        B (Tensor): Target tensor of shape (n, k).
-        mapping (LongTensor): Tensor of shape (n,) where each element specifies
-                              the index in A to add to the corresponding row in B.
 
-    Returns:
-        Tensor: Updated tensor B after addition.
-    """
-    # Ensure mapping is of type LongTensor and on the same device as A
-    mapping = mapping.to(dtype=torch.long, device=A.device)
 
-    # Perform the addition
-    B += A.index_select(0, mapping)
+cuda_module = load(name="reverse_scatter",
+                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
 
-    return B
+
+class ReverseScatter(Function):
+    @staticmethod
+    def forward(ctx, input, mapping, output):
+        ctx.save_for_backward(mapping)
+        ctx.input_size = input.size(0)  # Save the input size for use in backward
+        return cuda_module.forward(input, mapping, output)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (mapping,) = ctx.saved_tensors
+        input_size = ctx.input_size
+        grad_input = cuda_module.backward(grad_output.contiguous(), mapping,input_size)
+        return grad_input, None, None  # grad w.r.t. input only
+
 
 class EGNNLayerSum(MessagePassing):
     def __init__(self, in_channels, out_channels, edge_channels=0, hidden_channels=64, aggr='add'):
@@ -70,13 +70,13 @@ class EGNNLayerSum(MessagePassing):
         xj = self.dst_linear(x)
 
         edge = self.edge_linear(edge_attr)
-        #edge = add_rows_by_mapping(xi, edge, edge_index[0])
-        #edge = add_rows_by_mapping(xj, edge, edge_index[1])
+        edge = ReverseScatter.apply(xi, edge_index[0], edge) if edge is not None else None
+        edge = ReverseScatter.apply(xj, edge_index[1], edge) if edge is not None else None
 
 
-        return self.propagate(edge_index,x=x, y=xi, z=xj, pos=pos, edge_attr=edge)
+        return self.propagate(edge_index,x=x, pos=pos, edge_attr=edge)
 
-    def message(self,x,  y_i, z_j, pos_i, pos_j, edge_attr):
+    def message(self,x, pos_i, pos_j, edge_attr):
         # Compute squared distance
         diff = pos_i - pos_j
         radial = torch.sum(diff ** 2, dim=1, keepdim=True)
@@ -85,7 +85,7 @@ class EGNNLayerSum(MessagePassing):
         
         g_dist = self.geometric_linear(radial)
  
-        e_ij = self.edge_mlp(self.activation(torch.add(torch.add(y_i, z_j), torch.add(edge_attr, g_dist))))
+        e_ij = self.edge_mlp(torch.add(edge_attr, g_dist))
         coord_update = diff * self.coord_mlp(e_ij)
         return {'e_ij': e_ij, 'coord_update': coord_update}
 

@@ -5,14 +5,37 @@ from torch_scatter import scatter
 from torch_geometric.utils import scatter
 from torch_geometric.nn import global_mean_pool
 import torch.nn.functional as F
+from typing import Dict
 
+from torch.autograd import Function
+from torch.utils.cpp_extension import load
+
+cuda_module = load(name="reverse_scatter",
+                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
+
+
+class ReverseScatter(Function):
+    @staticmethod
+    def forward(ctx, input, mapping, output):
+        ctx.save_for_backward(mapping)
+        ctx.input_size = input.size(0)  # Save the input size for use in backward
+        return cuda_module.forward(input, mapping, output)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (mapping,) = ctx.saved_tensors
+        input_size = ctx.input_size
+        grad_input = cuda_module.backward(grad_output, mapping,input_size)
+        return grad_input, None, None  # grad w.r.t. input only
 
 
 class DimeNetLayerSum(MessagePassing):
     def __init__(self, in_channels, out_channels, hidden_channels=64, num_rbf=6, num_cbf=6):
         super(DimeNetLayerSum, self).__init__(aggr='add')
-
-
+        
+        # Compile and load the CUDA extension
+        self.cuda_module = load(name="reverse_scatter",
+                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
         self.second_node_mlp = nn.Linear(in_channels, hidden_channels, bias=False)
         self.rbf_mlp = nn.Linear(num_rbf, hidden_channels, bias=False)
         self.cbf_mlp = nn.Linear(num_cbf, hidden_channels, bias=False)
@@ -26,9 +49,7 @@ class DimeNetLayerSum(MessagePassing):
         self.edge_mlp_activation_2 = nn.ReLU()
         
         self.node_mlp = nn.Sequential(
-            nn.Linear(in_channels + hidden_channels, hidden_channels),
-            nn.ReLU(),
-            nn.Linear(hidden_channels, out_channels)
+            nn.Linear(in_channels + hidden_channels, out_channels)
         )
         
     def forward(self, x, edge_index, edge_attr, triplet_info, rbf=None):
@@ -37,46 +58,34 @@ class DimeNetLayerSum(MessagePassing):
         edge_index: Edge indices (2, E)
         edge_attr: dict with 'distances': [E]
         triplet_info: dict with:
-            - 'k_idx': source of incoming to j
+            - 'k_idx': source node of incoming edge to j
             - 'j_idx': shared middle node
             - 'i_idx': target node
             - 'angles': [T]
+            - 'cbf': [T, D]
+        rbf: Radial basis features per edge [E, D]
         """
-        self.triplet_info = triplet_info
 
-        self.x_second = self.second_node_mlp(x)  # [N, H]
-        self.rbf = self.rbf_mlp(rbf)
-        self.cbf = self.cbf_mlp(self.triplet_info['cbf'])
+        # Preprocess components used in message construction
+        x_k = self.second_node_mlp(x)#[triplet_info['k_idx']]           # [T, D]
+        x_j = self.rbf_mlp(rbf) if rbf is not None else 0  # [T, D] [triplet_info['j_idx']]
+        cbf_emb = self.cbf_mlp(triplet_info['cbf'])                    # [T, D]
 
-        x_first = self.first_node_mlp(x)  # [N, H]
-        
-        return self.propagate(edge_index, x=x, z = x_first)
+        cbf_emb = ReverseScatter.apply(x_k, triplet_info['k_idx'], cbf_emb)  # [E, D]
+        triplet_msg = ReverseScatter.apply(x_j, triplet_info['j_idx'], cbf_emb)                            # [T, D]
 
-    def message(self, z_j, index):
-        # Triplet data: k → j → i
-        k, j, i = self.triplet_info['k_idx'], self.triplet_info['j_idx'], self.triplet_info['i_idx']
+        # Aggregate triplet messages into edge-level messages
+        edge_msg = scatter(triplet_msg, triplet_info['j_idx'], dim=0, dim_size=edge_index.size(1), reduce='add')  # [E, D]
 
+        # Edge-level processing using destination node features
+        x_j_edge = self.first_node_mlp(x)[edge_index[1]]              # [E, D]
+        edge_out = self.edge_mlp_activation_2(x_j_edge + edge_msg)    # [E, D]
 
-        m_kj = self.x_second[k]  # [T, F]
-        rbf_feat = self.rbf[j]  # [T, R]
-        
-        #m_kji = torch.cat([m_kj, rbf_feat, cbf_feat], dim=-1)  # [T, F+R+C]
-        edge_message = self.edge_mlp_activation(m_kj + rbf_feat+ self.cbf)  # [T, H]
+        # Node-level aggregation: sum messages for each destination node
+        node_aggr = scatter(edge_out, edge_index[1], dim=0, dim_size=x.size(0), reduce='add')  # [N, D]
 
-        # Aggregate over j to get final message for each edge j→i
-        aggregated = torch.zeros_like(z_j)
-        aggregated = scatter(edge_message, j, dim=0, dim_size=z_j.size(0), reduce='add')
-
-        # Combine with original message
-        final_input = torch.add(z_j, self.aggregate_mlp(aggregated)[index])  # [E, H]
-
-        
-        final_input = self.edge_mlp_activation_2(final_input)  # [E, H]
-
-        return final_input
-
-    def update(self, aggr_out, x):
-        return self.node_mlp(torch.cat([x, aggr_out], dim=-1))
+        # Final node update
+        return self.node_mlp(torch.cat([x, node_aggr], dim=-1)) 
 
 
 class DimeNetLayerCat(MessagePassing):
@@ -92,9 +101,7 @@ class DimeNetLayerCat(MessagePassing):
         self.edge_mlp_2_act = nn.ReLU()
 
         self.node_mlp = nn.Sequential(
-            nn.Linear(in_channels + hidden_channels, hidden_channels),
-            nn.ReLU(),
-            nn.Linear(hidden_channels, out_channels)
+            nn.Linear(in_channels + hidden_channels, out_channels)
         )
 
     def forward(self, x, edge_index, edge_attr, triplet_info, rbf=None):
@@ -108,22 +115,22 @@ class DimeNetLayerCat(MessagePassing):
             - 'i_idx': target node
             - 'angles': [T]
         """
-        self.edge_rbf = rbf  # [E, num_rbf]
+
         self.triplet_info = triplet_info
         
-        return self.propagate(edge_index, x=x)
+        return self.propagate(edge_index, x=x, rbf=rbf)
 
-    def message(self,x, x_i, x_j, index):
+    def message(self,x, x_j, rbf, index):
         # Triplet data: k → j → i
         k, j, i = self.triplet_info['k_idx'], self.triplet_info['j_idx'], self.triplet_info['i_idx']
         angles = self.triplet_info['angles']  # [T]
 
         m_kj = x[k]  # [T, F]
-        rbf_feat = self.edge_rbf[j]  # [T, R]
+        rbf_feat = rbf[j]  # [T, R]
         cbf_feat = self.triplet_info['cbf']  # [T, C]
         
-        m_kji = torch.cat([m_kj, rbf_feat, cbf_feat], dim=-1)  # [T, F+R+C]
-        edge_message = self.edge_mlp_act(self.edge_mlp(m_kji))  # [T, H]
+        m_kji = self.edge_mlp(torch.cat([m_kj, rbf_feat, cbf_feat], dim=-1))  # [T, F+R+C]
+        edge_message = self.edge_mlp_act(m_kji)  # [T, H]
 
         # Aggregate over j to get final message for each edge j→i
         aggregated = torch.zeros_like(x_j)
