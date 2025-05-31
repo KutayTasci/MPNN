@@ -11,10 +11,5 @@ test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=1)
 test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=1)
 
 
-test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=1)
-test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=1)
-
-test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=1)
-test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=1)
 
 
