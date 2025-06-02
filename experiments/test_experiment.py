@@ -18,7 +18,7 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128):
         "hidden_channels": 64,
         "num_layers": 7,
         "learning_rate": 0.0001,
-        "epochs": 10
+        "epochs": 100
     }
     
     train_loader, val_loader, test_loader = dataset.get_loaders(batch_size=batch_size, shuffle=True)
@@ -108,13 +108,13 @@ def Train_On_GemNet(benchmark, dataset, model_type='cat', batch_size=128):
     # Train EGNN
     train.Train_GraphClassification(model, (train_loader, val_loader, test_loader), optimizer, F.l1_loss, device, epochs=epochs, benchmark=benchmark)
 
-def test_egnn(benchmark=False, model_type='cat', batch_size=32):
+def test_egnn(benchmark=False, model_type='cat', batch_size=1024):
     
     # Load dataset  
     #dataset = QM9Dataset()
-    #dataset = QM9DatasetOriginal()
+    dataset = QM9DatasetOriginal()
     #dataset = MD17Dataset(name='aspirin')
-    dataset = ModelNetDataset()
+    #dataset = ModelNetDataset()
     #dataset = PPI_Dataset()  
     #dataset = Fake_Dataset(dimenet=True, num_graphs=32, num_nodes=100, avg_degree=50)
 

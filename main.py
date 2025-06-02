@@ -1,101 +1,109 @@
 
+import experiments.egnn_experiment as egnn_exp
 import experiments.test_experiment as test_exp
 import logging
+
+import os
+import torch
+import pandas as pd
+def get_arch_list():
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available.")
+
+    arch_list = set()
+    for i in range(torch.cuda.device_count()):
+        cap = torch.cuda.get_device_capability(i)
+        # Convert (major, minor) to "x.y" string
+        arch_str = f"{cap[0]}.{cap[1]}"
+        arch_list.add(arch_str)
+    return ";".join(sorted(arch_list))
+
+# Automatically set TORCH_CUDA_ARCH_LIST before importing cpp_extension
+os.environ['TORCH_CUDA_ARCH_LIST'] = get_arch_list()
 logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERROR)
 
+#test_exp.test_egnn()
 
-test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=32)
-#test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=2048)
+experiment_file = 'egnn_experiment.csv'
 
-#test_exp.test_egnn(benchmark=True, model_type='sum', batch_size=2)
-#test_exp.test_egnn(benchmark=True, model_type='cat', batch_size=2)
+experiment_qm9 = {
+    'benchmark': True,
+    'dataset_name': 'QM9',
+    'name': [None],
+    'batch_size': [512, 1024, 2048, 4096],
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10
+}
 
+experiment_modelnet = {
+    'benchmark': True,
+    'dataset_name': 'ModelNet',
+    'name': [None],
+    'batch_size': [16, 32, 64, 128, 256],
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10
+}
 
-"""
-import torch
-from torch.autograd import Function
-from torch.utils.cpp_extension import load
+experiment_ppi = {
+    'benchmark': True,
+    'dataset_name': 'PPI',
+    'name': [None],
+    'batch_size': [1, 2, 4, 8, 16],
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10
+}
 
-cuda_module = load(name="reverse_scatter",
-                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
+experiment_md17 = {
+    'benchmark': True,
+    'dataset_name': 'MD17',
+    'name': ['aspirin', 'benzene', 'uracil', 'paracetamol', 'azobenzene', 'salicylic_acid'],
+    'batch_size': [64, 128, 256, 512, 1024, 2048],
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10
+}
 
+experiments = [
+    experiment_qm9,
+    experiment_modelnet,
+    experiment_ppi,
+    experiment_md17
+]
 
-class ReverseScatter(Function):
-    @staticmethod
-    def forward(ctx, input, mapping, output):
-        ctx.save_for_backward(mapping)
-        ctx.input_size = input.size(0)  # Save the input size for use in backward
-        return cuda_module.forward(input.contiguous(), mapping, output.contiguous())
+for experiment in experiments:
+    batch_sizes = experiment['batch_size']
+    hidden_channels = experiment['hidden_channels']
+    num_layers = experiment['num_layers']
+    learning_rate = experiment['learning_rate']
+    epochs = experiment['epochs']
+    benchmark = experiment['benchmark']
+    dataset_name = experiment['dataset_name']
+    names = experiment.get('name', [None])  # Default to [None] if 'name' is not provided
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        (mapping,) = ctx.saved_tensors
-
-        input_size = ctx.input_size
-        grad_input = cuda_module.backward(grad_output.contiguous(), mapping,input_size)
-        return grad_input, None, None  # grad w.r.t. input only
-
-# Alias for easier use
-reverse_scatter_fn = ReverseScatter.apply
-
-# Testing the custom kernel
-def test_reverse_scatter():
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Define input parameters
-    input_rows = 3
-    output_rows = 5
-    feature_dim = 4
-
-    # Create input tensor
-    input_tensor = torch.randn(input_rows, feature_dim, device=device, requires_grad=True)
-
-    # Define mapping from output rows to input rows
-    mapping = torch.tensor([0, 1, 2, 1, 0], device=device, dtype=torch.int64)
-
-    # Initialize output tensor
-    output_tensor = torch.zeros(output_rows, feature_dim, device=device)
-
-    # Forward pass
-    output = reverse_scatter_fn(input_tensor, mapping, output_tensor.clone())
-
-    # Define a simple loss (sum of all elements)
-    loss = output.sum()
-
-    # Backward pass
-    loss.backward()
-
-    # Print results
-    print("Input Tensor:")
-    print(input_tensor)
-
-    print("\nMapping:")
-    print(mapping)
-
-    print("\nOutput Tensor after Forward Pass:")
-    print(output)
-
-    print("\nGradient w.r.t. Input Tensor:")
-    print(input_tensor.grad)
-
-    # Verification
-    # Manually compute expected output
-    expected_output = torch.zeros_like(output_tensor)
-    for i in range(output_rows):
-        expected_output[i] = input_tensor[mapping[i]]
-    assert torch.allclose(output, expected_output), "Forward pass output mismatch."
-
-    # Manually compute expected gradients
-    expected_grad = torch.zeros_like(input_tensor)
-    for i in range(output_rows):
-        expected_grad[mapping[i]] += 1.0  # Since loss is sum, gradient is 1 for each output element
-
-    print("\nExpected Gradient:")
-    print(expected_grad)
-    assert torch.allclose(input_tensor.grad, expected_grad), "Backward pass gradient mismatch."
-
-    print("\nTest passed successfully.")
-
-if __name__ == "__main__":
-    test_reverse_scatter()
-"""
+    for batch_size in batch_sizes:
+        for hidden_channel in hidden_channels:
+            for name in names:
+                cat_summary, sum_summary = egnn_exp.RealDataset_Experiment(
+                    benchmark=benchmark,
+                    dataset_name=dataset_name,
+                    batch_size=batch_size,
+                    hidden_channels=hidden_channel,
+                    num_layers=num_layers,
+                    learning_rate=learning_rate,
+                    epochs=epochs,
+                    name=name
+                )
+                # Save results to CSV file
+                results = pd.DataFrame([cat_summary, sum_summary])
+                print(results)
+                if not os.path.exists(experiment_file):
+                    results.to_csv(experiment_file, index=False)
+                else:
+                    results.to_csv(experiment_file, mode='a', header=False, index=False)

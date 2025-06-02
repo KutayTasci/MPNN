@@ -42,6 +42,16 @@ def Train_GraphClassification(model, data_loader, optimizer, loss_fn, device, ep
     '''
     train_loader, val_loader, test_loader = data_loader
     trainer = Trainer(model, optimizer, loss_fn, device)
+
+    # Perform warmup
+    if benchmark:
+        print("Warming up GPU...")
+        for _ in range(5):
+            for data in train_loader:
+                data.to(device)
+                trainer.train(data)
+        torch.cuda.synchronize()
+    print("Starting training...")
     comp_time = 0
     if benchmark:
         start = time.time()
@@ -66,14 +76,20 @@ def Train_GraphClassification(model, data_loader, optimizer, loss_fn, device, ep
     
 
     if benchmark:
+        results = {}
         end = time.time()
         peak_memory = torch.cuda.max_memory_allocated() / 1e6
         print(f"Training Time: {end-start:.4f} seconds")
+        results['training_time'] = end - start
         print(f"Computation Time: {comp_time:.4f} seconds")
+        results['computation_time'] = comp_time
         print(f"Peak memory usage: {peak_memory:.2f} MB")
+        results['peak_memory'] = peak_memory
         #print(f"Final Test Accuracy: {test_acc:.4f}")
         print(f"Troughput: {epochs/(end-start):.3f} epoch/sec")
+        results['throughput'] = epochs / (end - start)
         print(f"Computation Troughput: {epochs/comp_time:.4f} seconds")
+        results['computation_throughput'] = epochs / comp_time
         if test_loader is not None:
             val_loss = 0
             ctr = 0
@@ -82,4 +98,7 @@ def Train_GraphClassification(model, data_loader, optimizer, loss_fn, device, ep
                 val_loss += trainer.test(data)
                 ctr += 1
             print(f"Validation Loss: {val_loss/ctr:.4f}")
+        return results
+
+    return None
 
