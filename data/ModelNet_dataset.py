@@ -168,27 +168,32 @@ class ModelNetDataset:
 
         if dimenet:
             basic_transform = T.Compose([
+                T.FaceToEdge(remove_faces=True),
                 create_new_fields_dimenet
             ])
         else:
             basic_transform = T.Compose([
+                T.FaceToEdge(remove_faces=True),
                 create_new_fields
             ])
-
-        self.dataset = ModelNet(
+        print("Applying transforms and caching the dataset...")
+        raw_dataset = ModelNet(
             root=self.root,
             name=self.name,
             train=True,
             transform=basic_transform
         )
 
-        self.test_dataset = ModelNet(
+        self.dataset = [raw_dataset[i] for i in range(len(raw_dataset))]
+
+        raw_dataset = ModelNet(
             root=self.root,
             name=self.name,
             train=False,
-            transform=basic_transform
+            transform=basic_transform,
+            force_reload=True
         )
-
+        self.test_dataset = [raw_dataset[i] for i in range(len(raw_dataset))]
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1  # Regression task
         self.edge_feature_dim = self.dataset[0].edge_attr.shape[1] if self.dataset[0].edge_attr is not None else 0

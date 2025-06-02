@@ -70,8 +70,8 @@ class EGNNLayerSum(MessagePassing):
         xj = self.dst_linear(x)
 
         edge = self.edge_linear(edge_attr)
-        edge = ReverseScatter.apply(xi, edge_index[0], edge) if edge is not None else None
-        edge = ReverseScatter.apply(xj, edge_index[1], edge) if edge is not None else None
+        edge = ReverseScatter.apply(xi, edge_index[0], edge) 
+        edge = ReverseScatter.apply(xj, edge_index[1], edge)
 
 
         return self.propagate(edge_index,x=x, pos=pos, edge_attr=edge)

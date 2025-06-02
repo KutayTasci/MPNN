@@ -192,12 +192,15 @@ class MD17Dataset:
                 create_new_fields
             ])
 
-        self.dataset = MD17(
+        print("Applying transforms and caching the dataset...")
+        raw_dataset = MD17(
             root=self.root,
             name=self.name,
             train=None,
             transform=basic_transform
         )
+
+        self.dataset = [raw_dataset[i] for i in range(len(raw_dataset))]
 
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1  # Regression task

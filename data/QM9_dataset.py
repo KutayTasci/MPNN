@@ -4,8 +4,10 @@ from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 import torch_geometric.transforms as T
 from torch_geometric.utils import to_undirected
+import torch.nn.functional as F
 from torch import nn
 from tqdm import tqdm
+import os
 
 x_dim = 64
 pos_dim = 3
@@ -213,43 +215,58 @@ def create_new_fields(data):
 
 
 class QM9Dataset:
-    def __init__(self, root: str = "data/QM9", x_dimt=64, pos_dimt=3, edge_attr_dimt=64, y_dimt=1, num_graphs=1000, num_nodes=100, avg_degree=5, dimenet=False, gemnet=False):
+    def __init__(self, root: str = "data/QM9", x_dimt=64, pos_dimt=3, edge_attr_dimt=64, y_dimt=1,
+                 num_graphs=1000, num_nodes=100, avg_degree=5, dimenet=False, gemnet=False,
+                 cache_file='cached_qm9.pt', cache=False):
         """
         Initializes the QM9 dataset with normalized node features x.
+        If cache is True and cache_file exists, loads preprocessed data instead of applying transform repeatedly.
         """
         self.root = root
-        
+        self.cache_file = cache_file
+        self.cache = cache
+
         x_dim = x_dimt
         pos_dim = pos_dimt
         edge_attr_dim = edge_attr_dimt
         y_dim = y_dimt
 
+        # Choose transform function
         if dimenet:
-            basic_transform = T.Compose([
-                create_new_fields_dimenet
-            ])
+            basic_transform = T.Compose([create_new_fields_dimenet])
+            model = 'dimenet'
         elif gemnet:
-            basic_transform = T.Compose([
-                create_new_fields_gemnet
-            ])
+            basic_transform = T.Compose([create_new_fields_gemnet])
+            model = 'gemnet'
         else:
-            basic_transform = T.Compose([
-                create_new_fields
-            ])
-        
-        #self.normalizer = NormalizeX().fit(raw_dataset)
-        self.dataset = QM9(root=self.root, transform=basic_transform)
-        
+            basic_transform = T.Compose([create_new_fields])
+            model = 'egnn'
+
+        cache_file = cache_file+model
+
+        if cache and os.path.exists(cache_file):
+            print(f"Loading cached dataset from {cache_file}...")
+            self.dataset = torch.load(cache_file)
+        else:
+            print("Applying transforms and caching the dataset...")
+            raw_dataset = QM9(root=self.root, transform=basic_transform)
+            self.dataset = [raw_dataset[i] for i in range(len(raw_dataset))]  # Apply transforms now
+            #if cache:
+            #    torch.save(self.dataset, cache_file)
+
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1  # Regression task
         self.edge_feature_dim = self.dataset[0].edge_attr.shape[1] if self.dataset[0].edge_attr is not None else 0
+
         # Use only the first label (target 0) for regression
-        if self.dataset.data.y is not None and self.dataset.data.y.ndim > 1:
-            self.dataset.data.y = self.dataset.data.y[:, [0]]
+        if self.dataset[0].y is not None and self.dataset[0].y.ndim > 1:
+            for data in self.dataset:
+                data.y = data.y[:, [0]]
         else:
             raise ValueError("Dataset labels (y) are either None or have insufficient dimensions.")
+
         self.task = 'regression'
-        print(self.dataset[0])
+        print("Sample graph:", self.dataset[0])
 
     def get_loaders(self, batch_size: int = 32, shuffle: bool = True, **kwargs):
         """
@@ -273,9 +290,8 @@ class QM9Dataset:
 
         return train_loader, val_loader, test_loader
 
-    def get_data(self) -> Data:
+    def get_data(self):
         return self.dataset
-
 
 class QM9DatasetOriginal:
     def __init__(self, root: str = "data/QM9"):

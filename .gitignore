@@ -6,6 +6,7 @@ __pycache__/
 *.log
 *.sif
 *.def
+*.pt
 
 # Ignore environment files
 .env

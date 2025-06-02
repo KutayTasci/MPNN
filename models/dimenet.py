@@ -78,8 +78,8 @@ class DimeNetLayerSum(MessagePassing):
         edge_msg = scatter(triplet_msg, triplet_info['j_idx'], dim=0, dim_size=edge_index.size(1), reduce='add')  # [E, D]
 
         # Edge-level processing using destination node features
-        x_j_edge = self.first_node_mlp(x)[edge_index[1]]              # [E, D]
-        edge_out = self.edge_mlp_activation_2(x_j_edge + edge_msg)    # [E, D]
+        x_j_edge = self.first_node_mlp(x)            # [E, D]
+        edge_out = self.edge_mlp_activation_2(ReverseScatter.apply(x_j_edge,edge_index[1] ,edge_msg))    # [E, D]
 
         # Node-level aggregation: sum messages for each destination node
         node_aggr = scatter(edge_out, edge_index[1], dim=0, dim_size=x.size(0), reduce='add')  # [N, D]

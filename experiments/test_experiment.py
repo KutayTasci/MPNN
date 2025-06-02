@@ -49,7 +49,7 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128):
 def Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=128):
     cfg = {
         "hidden_channels": 64,
-        "num_layers": 4,
+        "num_layers": 7,
         "learning_rate": 0.0001,
         "epochs": 10
     }
@@ -114,17 +114,17 @@ def test_egnn(benchmark=False, model_type='cat', batch_size=32):
     #dataset = QM9Dataset()
     #dataset = QM9DatasetOriginal()
     #dataset = MD17Dataset(name='aspirin')
-    #dataset = ModelNetDataset(dimenet=True)
+    dataset = ModelNetDataset()
     #dataset = PPI_Dataset()  
-    dataset = Fake_Dataset(dimenet=True, num_graphs=32, num_nodes=100, avg_degree=80)
+    #dataset = Fake_Dataset(dimenet=True, num_graphs=32, num_nodes=100, avg_degree=50)
 
 
 
     print('Experiment for model type: ', model_type)
     print('Batch Size: ', batch_size)
     # Train EGNN
-    #Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=batch_size)
-    #Train_On_EGNN(benchmark, dataset, model_type='sum', batch_size=batch_size)
-    Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=batch_size)
-    Train_On_DimeNet(benchmark, dataset, model_type='sum', batch_size=batch_size)
+    Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=batch_size)
+    Train_On_EGNN(benchmark, dataset, model_type='sum', batch_size=batch_size)
+    #Train_On_DimeNet(benchmark, dataset, model_type='cat', batch_size=batch_size)
+    #Train_On_DimeNet(benchmark, dataset, model_type='sum', batch_size=batch_size)
     #Train_On_GemNet(benchmark, dataset, model_type=model_type, batch_size=batch_size)
