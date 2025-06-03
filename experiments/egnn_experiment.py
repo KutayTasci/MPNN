@@ -48,25 +48,62 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128, hidden_c
     return results
 
 
-def RealDataset_Experiment(benchmark, dataset_name, batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10, name='aspirin'):
-    if dataset_name == 'QM9':
-        dataset = QM9Dataset()
-    elif dataset_name == 'QM9Original':
-        dataset = QM9DatasetOriginal()
-    elif dataset_name == 'MD17':
-        dataset = MD17Dataset(name=name)
-    elif dataset_name == 'ModelNet':
-        dataset = ModelNetDataset()
-    elif dataset_name == 'PPI':
-        dataset = PPI_Dataset()
-    else:
-        raise ValueError(f"Unknown dataset: {dataset_name}")
+def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10, name='aspirin'):
+    
     
     # First, train the EGNN model on cat model
-    cat_results = Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=batch_size, hidden_channels=hidden_channels, num_layers=num_layers, learning_rate=learning_rate, epochs=epochs)
+    try:
+        cat_results = Train_On_EGNN(
+            benchmark,
+            dataset,
+            model_type='cat',
+            batch_size=batch_size,
+            hidden_channels=hidden_channels,
+            num_layers=num_layers,
+            learning_rate=learning_rate,
+            epochs=epochs
+        )
+    except RuntimeError as e:
+        if 'CUDA out of memory' in str(e):
+            print('Experiment Failed: CUDA out of memory.')
+        else:
+            print(f'Experiment Failed: {e}')
+        cat_results = {
+            'training_time': None,
+            'computation_time': None,
+            'peak_memory': None,
+            'throughput': None,
+            'computation_throughput': None,
+            'validation_loss': None
+        }
+        torch.cuda.empty_cache()
     print(cat_results)
     # Then, train the EGNN model on sum model
-    sum_results = Train_On_EGNN(benchmark, dataset, model_type='sum', batch_size=batch_size, hidden_channels=hidden_channels, num_layers=num_layers, learning_rate=learning_rate, epochs=epochs)
+    try:
+        sum_results = Train_On_EGNN(
+            benchmark,
+            dataset,
+            model_type='sum',
+            batch_size=batch_size,
+            hidden_channels=hidden_channels,
+            num_layers=num_layers,
+            learning_rate=learning_rate,
+            epochs=epochs
+        )
+    except RuntimeError as e:
+        if 'CUDA out of memory' in str(e):
+            print('Experiment Failed: CUDA out of memory.')
+        else:
+            print(f'Experiment Failed: {e}')
+        sum_results = {
+            'training_time': None,
+            'computation_time': None,
+            'peak_memory': None,
+            'throughput': None,
+            'computation_throughput': None,
+            'validation_loss': None
+        }
+        torch.cuda.empty_cache()
     print(sum_results)
     # create a summary of results for both experiments add them to a dictionary cat_results and sum_results are already dictionaries.
     # Add time stamps dataset name, model_type, batch_size, hidden_channels, num_layers, learning_rate, epochs and name for MD17 dataset as (MD17_name)

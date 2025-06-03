@@ -1,6 +1,11 @@
 
 import experiments.egnn_experiment as egnn_exp
 import experiments.test_experiment as test_exp
+from data.QM9_dataset import QM9Dataset, QM9DatasetOriginal
+from data.MD17_dataset import MD17Dataset
+from data.ModelNet_dataset import ModelNetDataset
+from data.fake_dataset import Fake_Dataset
+from data.ppi_dataset import PPI_Dataset
 import logging
 
 import os
@@ -37,6 +42,7 @@ experiment_qm9 = {
     'epochs': 10
 }
 
+
 experiment_modelnet = {
     'benchmark': True,
     'dataset_name': 'ModelNet',
@@ -62,7 +68,7 @@ experiment_ppi = {
 experiment_md17 = {
     'benchmark': True,
     'dataset_name': 'MD17',
-    'name': ['aspirin', 'benzene', 'uracil', 'paracetamol', 'azobenzene', 'salicylic_acid'],
+    'name': ['azobenzene', 'salicylic_acid'], #aspirine
     'batch_size': [64, 128, 256, 512, 1024, 2048],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
@@ -87,11 +93,30 @@ for experiment in experiments:
     dataset_name = experiment['dataset_name']
     names = experiment.get('name', [None])  # Default to [None] if 'name' is not provided
 
-    for batch_size in batch_sizes:
-        for hidden_channel in hidden_channels:
-            for name in names:
+
+    if dataset_name == 'QM9':
+        dataset = QM9Dataset()
+    elif dataset_name == 'QM9Original':
+        dataset = QM9DatasetOriginal()
+    elif dataset_name == 'MD17':
+        pass
+    elif dataset_name == 'ModelNet':
+        dataset = ModelNetDataset()
+    elif dataset_name == 'PPI':
+        dataset = PPI_Dataset()
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+
+    for name in names:
+        if dataset_name == 'MD17':
+            dataset = MD17Dataset(name=name)
+        for batch_size in batch_sizes:
+            for hidden_channel in hidden_channels:
+            
+                
                 cat_summary, sum_summary = egnn_exp.RealDataset_Experiment(
                     benchmark=benchmark,
+                    dataset=dataset,
                     dataset_name=dataset_name,
                     batch_size=batch_size,
                     hidden_channels=hidden_channel,
