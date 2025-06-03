@@ -9,7 +9,7 @@ from typing import Dict
 
 from torch.autograd import Function
 from torch.utils.cpp_extension import load
-
+'''
 cuda_module = load(name="reverse_scatter",
                         sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
 
@@ -28,7 +28,7 @@ class ReverseScatter(Function):
         grad_input = cuda_module.backward(grad_output, mapping,input_size)
         return grad_input, None, None  # grad w.r.t. input only
 
-
+'''
 class DimeNetLayerSum(MessagePassing):
     def __init__(self, in_channels, out_channels, hidden_channels=64, num_rbf=6, num_cbf=6):
         super(DimeNetLayerSum, self).__init__(aggr='add')

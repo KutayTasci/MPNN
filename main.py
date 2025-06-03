@@ -41,7 +41,7 @@ experiment_modelnet = {
     'benchmark': True,
     'dataset_name': 'ModelNet',
     'name': [None],
-    'batch_size': [16, 32, 64, 128, 256],
+    'batch_size': [1, 2, 4, 8, 16],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
@@ -71,10 +71,10 @@ experiment_md17 = {
 }
 
 experiments = [
-    experiment_qm9,
-    experiment_modelnet,
-    experiment_ppi,
-    experiment_md17
+    #experiment_qm9,
+    experiment_modelnet
+    #experiment_ppi,
+    #experiment_md17
 ]
 
 for experiment in experiments:

@@ -8,30 +8,25 @@ from torch_geometric.nn import global_mean_pool
 from torch_scatter import scatter
 
 from torch.autograd import Function
-from torch.utils.cpp_extension import load
+from torch.utils.cpp_extension import load_inline
 
+# Merge bindings + dispatcher in single .cu file
+with open("custom_kernels/reverse_scatter_bindings.cu", "r") as f:
+    cuda_src = f.read()
 
+load_inline(
+    name="reverse_scatter",
+    cpp_sources="#include <torch/extension.h>\nTORCH_LIBRARY_FRAGMENT(reverse_scatter, m) {}",  # force linkage
+    cuda_sources=cuda_src,
+    extra_cuda_cflags=[],
+    extra_cflags=[],
+    functions=[],
+    verbose=True
+)
 
-
-
-cuda_module = load(name="reverse_scatter",
-                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
-
-
-class ReverseScatter(Function):
-    @staticmethod
-    def forward(ctx, input, mapping, output):
-        ctx.save_for_backward(mapping)
-        ctx.input_size = input.size(0)  # Save the input size for use in backward
-        return cuda_module.forward(input, mapping, output)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        (mapping,) = ctx.saved_tensors
-        input_size = ctx.input_size
-        grad_input = cuda_module.backward(grad_output.contiguous(), mapping,input_size)
-        return grad_input, None, None  # grad w.r.t. input only
-
+@torch._dynamo.disable
+def safe_reverse_scatter(input, mapping, output):
+    return torch.ops.reverse_scatter.forward(input, mapping, output)
 
 class EGNNLayerSum(MessagePassing):
     def __init__(self, in_channels, out_channels, edge_channels=0, hidden_channels=64, aggr='add'):
@@ -70,8 +65,8 @@ class EGNNLayerSum(MessagePassing):
         xj = self.dst_linear(x)
 
         edge = self.edge_linear(edge_attr)
-        edge = ReverseScatter.apply(xi, edge_index[0], edge) 
-        edge = ReverseScatter.apply(xj, edge_index[1], edge)
+        edge = safe_reverse_scatter(xi, edge_index[0], edge)
+        edge = safe_reverse_scatter(xj, edge_index[1], edge)
 
 
         return self.propagate(edge_index,x=x, pos=pos, edge_attr=edge)

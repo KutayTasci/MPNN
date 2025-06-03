@@ -37,10 +37,10 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128, hidden_c
     # Initialize Model
     model = EGNN(in_channels, edge_channels, hidden_channels, out_channels,mode=model_type, num_layers=num_layers, task="regression").to(device)
     # compile the model with torch.compile(backend='inductor')
-    #torch._dynamo.config.capture_scalar_outputs = True
-    #torch._dynamo.config.suppress_errors = True
-    #model = torch.compile(model, backend='inductor', dynamic=True, mode="reduce-overhead")  
-    #torch.set_float32_matmul_precision('high')
+    torch._dynamo.config.capture_scalar_outputs = True
+    torch._dynamo.config.suppress_errors = True
+    model = torch.compile(model, backend='inductor', dynamic=True)  
+    torch.set_float32_matmul_precision('high')
     optimizer = Adam(model.parameters(), lr=learning_rate)
     
     # Train EGNN
