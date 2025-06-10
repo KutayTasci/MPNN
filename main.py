@@ -68,7 +68,7 @@ experiment_ppi = {
 experiment_md17 = {
     'benchmark': True,
     'dataset_name': 'MD17',
-    'name': ['azobenzene', 'salicylic_acid'], #aspirine
+    'name': ['benzene'], #aspirine
     'batch_size': [64, 128, 256, 512, 1024, 2048],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
@@ -78,9 +78,9 @@ experiment_md17 = {
 
 experiments = [
     #experiment_qm9,
-    experiment_modelnet
     #experiment_ppi,
-    #experiment_md17
+    #experiment_md17,
+    experiment_modelnet
 ]
 
 for experiment in experiments:
