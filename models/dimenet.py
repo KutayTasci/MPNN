@@ -8,34 +8,29 @@ import torch.nn.functional as F
 from typing import Dict
 
 from torch.autograd import Function
-from torch.utils.cpp_extension import load
-'''
-cuda_module = load(name="reverse_scatter",
-                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
+from torch.utils.cpp_extension import load_inline
 
+# Merge bindings + dispatcher in single .cu file
+with open("custom_kernels/reverse_scatter_bindings.cu", "r") as f:
+    cuda_src = f.read()
 
-class ReverseScatter(Function):
-    @staticmethod
-    def forward(ctx, input, mapping, output):
-        ctx.save_for_backward(mapping)
-        ctx.input_size = input.size(0)  # Save the input size for use in backward
-        return cuda_module.forward(input, mapping, output)
+load_inline(
+    name="reverse_scatter",
+    cpp_sources="#include <torch/extension.h>\nTORCH_LIBRARY_FRAGMENT(reverse_scatter, m) {}",  # force linkage
+    cuda_sources=cuda_src,
+    extra_cuda_cflags=[],
+    extra_cflags=[],
+    functions=[],
+    verbose=True
+)
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        (mapping,) = ctx.saved_tensors
-        input_size = ctx.input_size
-        grad_input = cuda_module.backward(grad_output, mapping,input_size)
-        return grad_input, None, None  # grad w.r.t. input only
-
-'''
+@torch._dynamo.disable
+def safe_reverse_scatter(input, mapping, output):
+    return torch.ops.reverse_scatter.forward(input, mapping, output)
 class DimeNetLayerSum(MessagePassing):
     def __init__(self, in_channels, out_channels, hidden_channels=64, num_rbf=6, num_cbf=6):
         super(DimeNetLayerSum, self).__init__(aggr='add')
         
-        # Compile and load the CUDA extension
-        self.cuda_module = load(name="reverse_scatter",
-                        sources=["custom_kernels/reverse_scatter.cpp", "custom_kernels/reverse_scatter.cu"])
         self.second_node_mlp = nn.Linear(in_channels, hidden_channels, bias=False)
         self.rbf_mlp = nn.Linear(num_rbf, hidden_channels, bias=False)
         self.cbf_mlp = nn.Linear(num_cbf, hidden_channels, bias=False)
@@ -71,15 +66,15 @@ class DimeNetLayerSum(MessagePassing):
         x_j = self.rbf_mlp(rbf) if rbf is not None else 0  # [T, D] [triplet_info['j_idx']]
         cbf_emb = self.cbf_mlp(triplet_info['cbf'])                    # [T, D]
 
-        cbf_emb = ReverseScatter.apply(x_k, triplet_info['k_idx'], cbf_emb)  # [E, D]
-        triplet_msg = ReverseScatter.apply(x_j, triplet_info['j_idx'], cbf_emb)                            # [T, D]
+        cbf_emb = safe_reverse_scatter(x_k, triplet_info['k_idx'], cbf_emb)  # [E, D]
+        triplet_msg = safe_reverse_scatter(x_j, triplet_info['j_idx'], cbf_emb)                            # [T, D]
 
         # Aggregate triplet messages into edge-level messages
         edge_msg = scatter(triplet_msg, triplet_info['j_idx'], dim=0, dim_size=edge_index.size(1), reduce='add')  # [E, D]
 
         # Edge-level processing using destination node features
         x_j_edge = self.first_node_mlp(x)            # [E, D]
-        edge_out = self.edge_mlp_activation_2(ReverseScatter.apply(x_j_edge,edge_index[1] ,edge_msg))    # [E, D]
+        edge_out = self.edge_mlp_activation_2(safe_reverse_scatter(x_j_edge,edge_index[1] ,edge_msg))    # [E, D]
 
         # Node-level aggregation: sum messages for each destination node
         node_aggr = scatter(edge_out, edge_index[1], dim=0, dim_size=x.size(0), reduce='add')  # [N, D]
