@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch_geometric.data import Data
-from models.egnn import EGNN
 from models.dimenet import DimeNet
 from models.gemnet import GemNet
 from data.QM9_dataset import QM9Dataset, QM9DatasetOriginal
@@ -13,7 +12,7 @@ from data.ppi_dataset import PPI_Dataset
 import training.train as train
 import torch._dynamo
 
-def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10):
+def Train_On_Dimenet(benchmark, dataset, model_type='cat', batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10):
     cfg = {
         "hidden_channels": hidden_channels,
         "num_layers": num_layers,
@@ -35,7 +34,7 @@ def Train_On_EGNN(benchmark, dataset, model_type='cat', batch_size=128, hidden_c
     print(f"Device: {device}")
     
     # Initialize Model
-    model = EGNN(in_channels, edge_channels, hidden_channels, out_channels,mode=model_type, num_layers=num_layers, task="regression").to(device)
+    model = DimeNet(in_channels, hidden_channels, out_channels, num_layers=num_layers, task="regression", mode=model_type).to(device)
     # compile the model with torch.compile(backend='inductor')
     torch._dynamo.config.capture_scalar_outputs = True
     torch._dynamo.config.suppress_errors = True
@@ -53,7 +52,7 @@ def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hid
     
     # First, train the EGNN model on cat model
     try:
-        cat_results = Train_On_EGNN(
+        cat_results = Train_On_Dimenet(
             benchmark,
             dataset,
             model_type='cat',
@@ -80,7 +79,7 @@ def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hid
     print(cat_results)
     # Then, train the EGNN model on sum model
     try:
-        sum_results = Train_On_EGNN(
+        sum_results = Train_On_Dimenet(
             benchmark,
             dataset,
             model_type='sum',
@@ -138,11 +137,11 @@ def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hid
 def FakeDataset_Experiment(benchmark, dataset_name ,batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10, num_nodes=1000, density=0.1, num_graphs=100):
     num_edges = int(num_nodes * (num_nodes - 1) * density / 2)  # Calculate number of edges based on density
     avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
-    dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs)
+    dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, dimenet=True)
     
     try:
         # First, train the EGNN model on cat model
-        cat_results = Train_On_EGNN(
+        cat_results = Train_On_Dimenet(
             benchmark,
             dataset,
             model_type='cat',
@@ -169,7 +168,7 @@ def FakeDataset_Experiment(benchmark, dataset_name ,batch_size=128, hidden_chann
     print(cat_results)
     try:
         # Then, train the EGNN model on sum model
-        sum_results = Train_On_EGNN(
+        sum_results = Train_On_Dimenet(
             benchmark,
             dataset,
             model_type='sum',
