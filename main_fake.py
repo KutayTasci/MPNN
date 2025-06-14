@@ -32,9 +32,9 @@ logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERRO
 dimenet = True
 #test_exp.test_egnn()
 
-experiment_file = 'egnn__fake_experiment.csv'
+experiment_file = 'egnn_fake5000_experiment.csv'
 if dimenet:
-    experiment_file = 'dimenet_fake_experiment.csv'
+    experiment_file = 'dimenet_fake50_experiment.csv'
 
 if dimenet:
     experiment_func = dimenet_exp.FakeDataset_Experiment
@@ -42,6 +42,46 @@ else:
     experiment_func = egnn_exp.FakeDataset_Experiment
 
 experiment_fake_50 = {
+    'benchmark': True,
+    'dataset_name': 'FakeDataset_50',
+    'batch_size': [128, 256, 512, 1024], # 128
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10,
+    'num_nodes': 50,
+    'density': [0.01, 0.10, 0.50], # experiments left for 0.50
+    'num_graphs': [512, 16384] # 512
+}
+
+
+experiment_fake_500 = {
+    'benchmark': True,
+    'dataset_name': 'FakeDataset_500',
+    'batch_size': [32, 64, 128, 256],
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10,
+    'num_nodes': 500,
+    'density': [0.001, 0.01, 0.10],
+    'num_graphs': [512, 16384]
+}
+
+experiment_fake_5000 = {
+    'benchmark': True,
+    'dataset_name': 'FakeDataset_50',
+    'batch_size': [2, 4, 8, 16],
+    'hidden_channels': [32, 64, 128],
+    'num_layers': 7,
+    'learning_rate': 0.0001,
+    'epochs': 10,
+    'num_nodes': 5000,
+    'density': [0.0001, 0.001, 0.01],
+    'num_graphs': [64, 2048]
+}
+
+experiment_fake_50000 = {
     'benchmark': True,
     'dataset_name': 'FakeDataset_50',
     'batch_size': [64, 128, 256, 512],
@@ -69,15 +109,18 @@ for experiment in experiments:
     density_list = experiment['density']
     num_graphs_list = experiment['num_graphs']
 
-
-    for density in density_list:
-        for num_graphs in num_graphs_list:
-        
+    for num_graphs in num_graphs_list:
+        for density in density_list:
+            num_nodes = experiment['num_nodes']
+            num_edges = int(num_nodes * (num_nodes - 1) * density / 2)  # Calculate number of edges based on density
+            avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
+            dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, dimenet=dimenet)
             for batch_size in batch_sizes:
                 for hidden_channel in hidden_channels:
                     cat_summary, sum_summary = experiment_func(
                         benchmark=benchmark,
                         dataset_name=dataset_name,
+                        dataset = dataset,
                         batch_size=batch_size,
                         hidden_channels=hidden_channel,
                         num_layers=num_layers,

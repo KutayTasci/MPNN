@@ -134,10 +134,11 @@ def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hid
     return cat_summary, sum_summary
 
 
-def FakeDataset_Experiment(benchmark, dataset_name ,batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10, num_nodes=1000, density=0.1, num_graphs=100):
-    num_edges = int(num_nodes * (num_nodes - 1) * density / 2)  # Calculate number of edges based on density
-    avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
-    dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, dimenet=True)
+def FakeDataset_Experiment(benchmark, dataset_name, dataset=None ,batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10, num_nodes=1000, density=0.1, num_graphs=100):
+    if dataset is None:
+        num_edges = int(num_nodes * (num_nodes - 1) * density / 2)  # Calculate number of edges based on density
+        avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
+        dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, dimenet=True)
     
     try:
         # First, train the EGNN model on cat model

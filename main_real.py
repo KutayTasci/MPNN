@@ -41,7 +41,7 @@ experiment_qm9 = {
     'benchmark': True,
     'dataset_name': 'QM9',
     'name': [None],
-    'batch_size': [512, 1024, 2048, 4096],
+    'batch_size': [128, 256, 512, 1024, 2048],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
@@ -64,7 +64,7 @@ experiment_ppi = {
     'benchmark': True,
     'dataset_name': 'PPI',
     'name': [None],
-    'batch_size': [1, 2, 4, 8, 16],
+    'batch_size': [1, 2, 4, 8],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
@@ -74,8 +74,8 @@ experiment_ppi = {
 experiment_md17 = {
     'benchmark': True,
     'dataset_name': 'MD17',
-    'name': ['benzene'], #aspirine
-    'batch_size': [64, 128, 256, 512, 1024, 2048],
+    'name': ['aspirin'], #aspirine
+    'batch_size': [32, 64, 128, 256],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
@@ -85,8 +85,8 @@ experiment_md17 = {
 experiments = [
     #experiment_qm9,
     #experiment_ppi,
-    #experiment_md17,
-    experiment_modelnet
+    experiment_md17
+    #experiment_modelnet
 ]
 
 for experiment in experiments:
@@ -116,6 +116,7 @@ for experiment in experiments:
     for name in names:
         if dataset_name == 'MD17':
             dataset = MD17Dataset(name=name, dimenet=dimenet)
+            exit()
         for batch_size in batch_sizes:
             for hidden_channel in hidden_channels:
             

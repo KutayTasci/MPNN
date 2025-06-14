@@ -7,7 +7,7 @@ import torch_geometric.transforms as T
 import torch.nn.functional as F
 from torch_geometric.utils import to_undirected
 from torch import nn
-
+from tqdm import tqdm
 '''
 Define a function that creates new fields in the dataset with given dimensions, that will be used as transformation
 Override any existing fields in the dataset
@@ -159,6 +159,7 @@ def create_new_fields(data):
     data.edge_attr = torch.randn(data.num_edges, edge_attr_dim)
     return data
 
+
 class MD17Dataset:
     def __init__(
         self,
@@ -193,14 +194,15 @@ class MD17Dataset:
             ])
 
         print("Applying transforms and caching the dataset...")
-        raw_dataset = MD17(
+        self.dataset = MD17(
             root=self.root,
             name=self.name,
-            train=None,
-            transform=basic_transform
+            pre_transform=basic_transform,
+            force_reload=True
         )
 
-        self.dataset = [raw_dataset[i] for i in range(len(raw_dataset))]
+        #self.dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
+        print(self.dataset[0])
 
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1  # Regression task
