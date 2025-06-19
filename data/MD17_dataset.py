@@ -194,14 +194,14 @@ class MD17Dataset:
             ])
 
         print("Applying transforms and caching the dataset...")
-        self.dataset = MD17(
+        raw_dataset = MD17(
             root=self.root,
             name=self.name,
-            pre_transform=basic_transform,
+            transform=basic_transform,
             force_reload=True
         )
 
-        #self.dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
+        self.dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
         print(self.dataset[0])
 
         self.num_features = self.dataset[0].x.shape[1]

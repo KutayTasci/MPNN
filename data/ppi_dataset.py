@@ -7,6 +7,8 @@ import torch.nn.functional as F
 from torch_geometric.utils import to_undirected
 from torch import nn
 
+from tqdm import tqdm
+
 
 x_dim = 64
 pos_dim = 3
@@ -172,24 +174,27 @@ class PPI_Dataset:
                 create_new_fields
             ])
 
-        self.dataset = PPI(
+        raw_dataset = PPI(
             root=self.root,
             split='train',
             transform=basic_transform
         )
+        self.dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
 
-
-        self.val_dataset = PPI(
+        raw_dataset = PPI(
             root=self.root,
             split='val',
             transform=basic_transform
         )
+        self.val_dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
 
-        self.test_dataset = PPI(
+        raw_dataset = PPI(
             root=self.root,
             split='test',
             transform=basic_transform
         )
+
+        self.test_dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
 
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1  # Regression task

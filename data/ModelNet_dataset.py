@@ -6,6 +6,7 @@ import torch_geometric.transforms as T
 import torch.nn.functional as F
 from torch_geometric.utils import to_undirected
 from torch import nn
+from tqdm import tqdm
 
 
 
@@ -177,20 +178,24 @@ class ModelNetDataset:
                 create_new_fields
             ])
         print("Applying transforms and caching the dataset...")
-        self.dataset = ModelNet(
+        raw_dataset = ModelNet(
             root=self.root,
             name=self.name,
             train=True,
             transform=basic_transform
         )
 
+        self.dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
 
-        self.test_dataset = ModelNet(
+        raw_test_dataset = ModelNet(
             root=self.root,
             name=self.name,
             train=False,
             transform=basic_transform
         )
+
+        self.test_dataset = [raw_test_dataset[i] for i in tqdm(range(32))]
+
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1  # Regression task
         self.edge_feature_dim = self.dataset[0].edge_attr.shape[1] if self.dataset[0].edge_attr is not None else 0

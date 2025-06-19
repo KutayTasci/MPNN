@@ -272,12 +272,13 @@ class Fake_Dataset:
                 create_new_fields
             ])
 
-        self.dataset = FakeDataset(
+        raw_dataset= FakeDataset(
             num_graphs=num_graphs,
             avg_num_nodes=num_nodes,
             avg_degree=avg_degree,
             transform=basic_transform
         )
+        self.dataset = [raw_dataset[i] for i in tqdm(range(len(raw_dataset)))]
         self.num_features = self.dataset[0].x.shape[1]
         self.num_classes = 1
         self.edge_feature_dim = self.dataset[0].edge_attr.shape[1] if self.dataset[0].edge_attr is not None else 0

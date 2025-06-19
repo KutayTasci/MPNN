@@ -32,9 +32,9 @@ logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERRO
 dimenet = True
 #test_exp.test_egnn()
 
-experiment_file = 'egnn_fake5000_experiment.csv'
+experiment_file = 'egnn_fake_experiment.csv'
 if dimenet:
-    experiment_file = 'dimenet_fake50_experiment.csv'
+    experiment_file = 'dimenet_fake500_experiment.csv'
 
 if dimenet:
     experiment_func = dimenet_exp.FakeDataset_Experiment
@@ -44,33 +44,33 @@ else:
 experiment_fake_50 = {
     'benchmark': True,
     'dataset_name': 'FakeDataset_50',
-    'batch_size': [128, 256, 512, 1024], # 128
+    'batch_size': [64, 128, 256, 512], # 128
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
     'epochs': 10,
     'num_nodes': 50,
-    'density': [0.01, 0.10, 0.50], # experiments left for 0.50
-    'num_graphs': [512, 16384] # 512
+    'density': [0.01, 0.1, 0.50], 
+    'num_graphs': [1024, 16384] # 512
 }
 
 
 experiment_fake_500 = {
     'benchmark': True,
     'dataset_name': 'FakeDataset_500',
-    'batch_size': [32, 64, 128, 256],
+    'batch_size': [16, 32, 64, 128],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
     'epochs': 10,
     'num_nodes': 500,
-    'density': [0.001, 0.01, 0.10],
-    'num_graphs': [512, 16384]
+    'density': [ 0.05], # 0.001, 0.01,
+    'num_graphs': [1024]
 }
 
 experiment_fake_5000 = {
     'benchmark': True,
-    'dataset_name': 'FakeDataset_50',
+    'dataset_name': 'FakeDataset_5000',
     'batch_size': [2, 4, 8, 16],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
@@ -81,21 +81,9 @@ experiment_fake_5000 = {
     'num_graphs': [64, 2048]
 }
 
-experiment_fake_50000 = {
-    'benchmark': True,
-    'dataset_name': 'FakeDataset_50',
-    'batch_size': [64, 128, 256, 512],
-    'hidden_channels': [32, 64, 128],
-    'num_layers': 7,
-    'learning_rate': 0.0001,
-    'epochs': 10,
-    'num_nodes': 50,
-    'density': [0.1, 1, 10],
-    'num_graphs': [512, 1000, 10000]
-}
 
 experiments = [
-    experiment_fake_50
+    experiment_fake_500,
 ]
 
 for experiment in experiments:

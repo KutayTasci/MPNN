@@ -53,7 +53,7 @@ experiment_modelnet = {
     'benchmark': True,
     'dataset_name': 'ModelNet',
     'name': [None],
-    'batch_size': [1, 2, 4, 8, 16],
+    'batch_size': [1, 2, 4, 8],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
@@ -75,7 +75,7 @@ experiment_md17 = {
     'benchmark': True,
     'dataset_name': 'MD17',
     'name': ['aspirin'], #aspirine
-    'batch_size': [32, 64, 128, 256],
+    'batch_size': [256, 512, 1024],
     'hidden_channels': [32, 64, 128],
     'num_layers': 7,
     'learning_rate': 0.0001,
@@ -116,7 +116,6 @@ for experiment in experiments:
     for name in names:
         if dataset_name == 'MD17':
             dataset = MD17Dataset(name=name, dimenet=dimenet)
-            exit()
         for batch_size in batch_sizes:
             for hidden_channel in hidden_channels:
             
