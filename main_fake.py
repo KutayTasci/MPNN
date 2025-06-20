@@ -1,6 +1,6 @@
 
 import experiments.egnn_experiment as egnn_exp
-import experiments.dimenet_experiment as dimenet_exp
+import experiments.CHGnet_experiment as chgnet_exp
 from data.QM9_dataset import QM9Dataset, QM9DatasetOriginal
 from data.MD17_dataset import MD17Dataset
 from data.ModelNet_dataset import ModelNetDataset
@@ -29,15 +29,15 @@ logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERRO
 
 #test_exp.test_egnn()
 
-dimenet = True
+chgnet = True
 #test_exp.test_egnn()
 
 experiment_file = 'egnn_fake_experiment.csv'
-if dimenet:
-    experiment_file = 'dimenet_fake500_experiment.csv'
+if chgnet:
+    experiment_file = 'chgnet_fake500_experiment.csv'
 
-if dimenet:
-    experiment_func = dimenet_exp.FakeDataset_Experiment
+if chgnet:
+    experiment_func = chgnet_exp.FakeDataset_Experiment
 else:
     experiment_func = egnn_exp.FakeDataset_Experiment
 
@@ -46,11 +46,11 @@ experiment_fake_50 = {
     'dataset_name': 'FakeDataset_50',
     'batch_size': [64, 128, 256, 512], # 128
     'hidden_channels': [32, 64, 128],
-    'num_layers': 7,
+    'num_layers': 4,
     'learning_rate': 0.0001,
     'epochs': 10,
     'num_nodes': 50,
-    'density': [0.01, 0.1, 0.50], 
+    'density': [0.1, 0.1, 0.50], 
     'num_graphs': [1024, 16384] # 512
 }
 
@@ -83,7 +83,7 @@ experiment_fake_5000 = {
 
 
 experiments = [
-    experiment_fake_500,
+    experiment_fake_50,
 ]
 
 for experiment in experiments:
@@ -102,7 +102,7 @@ for experiment in experiments:
             num_nodes = experiment['num_nodes']
             num_edges = int(num_nodes * (num_nodes - 1) * density / 2)  # Calculate number of edges based on density
             avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
-            dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, dimenet=dimenet)
+            dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, chgnet=chgnet)
             for batch_size in batch_sizes:
                 for hidden_channel in hidden_channels:
                     cat_summary, sum_summary = experiment_func(

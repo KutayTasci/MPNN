@@ -1,6 +1,6 @@
 
 import experiments.egnn_experiment as egnn_exp
-import experiments.dimenet_experiment as dimenet_exp
+import experiments.CHGnet_experiment as chgnet_exp
 from data.QM9_dataset import QM9Dataset, QM9DatasetOriginal
 from data.MD17_dataset import MD17Dataset
 from data.ModelNet_dataset import ModelNetDataset
@@ -26,15 +26,15 @@ def get_arch_list():
 # Automatically set TORCH_CUDA_ARCH_LIST before importing cpp_extension
 os.environ['TORCH_CUDA_ARCH_LIST'] = get_arch_list()
 logging.getLogger("torch.fx.experimental.symbolic_shapes").setLevel(logging.ERROR)
-dimenet = True
+chgnet = True
 #test_exp.test_egnn()
 
 experiment_file = 'egnn_experiment.csv'
-if dimenet:
-    experiment_file = 'dimenet_experiment.csv'
+if chgnet:
+    experiment_file = 'chgnet_experiment.csv'
 
-if dimenet:
-    experiment_func = dimenet_exp.RealDataset_Experiment
+if chgnet:
+    experiment_func = chgnet_exp.RealDataset_Experiment
 else:
     experiment_func = egnn_exp.RealDataset_Experiment
 experiment_qm9 = {
@@ -101,21 +101,21 @@ for experiment in experiments:
 
 
     if dataset_name == 'QM9':
-        dataset = QM9Dataset(dimenet=dimenet)
+        dataset = QM9Dataset(chgnet=chgnet)
     elif dataset_name == 'QM9Original':
-        dataset = QM9DatasetOriginal(dimenet=dimenet)
+        dataset = QM9DatasetOriginal(chgnet=chgnet)
     elif dataset_name == 'MD17':
         pass
     elif dataset_name == 'ModelNet':
-        dataset = ModelNetDataset(dimenet=dimenet)
+        dataset = ModelNetDataset(chgnet=chgnet)
     elif dataset_name == 'PPI':
-        dataset = PPI_Dataset(dimenet=dimenet)
+        dataset = PPI_Dataset(chgnet=chgnet)
     else:
         raise ValueError(f"Unknown dataset: {dataset_name}")
 
     for name in names:
         if dataset_name == 'MD17':
-            dataset = MD17Dataset(name=name, dimenet=dimenet)
+            dataset = MD17Dataset(name=name, chgnet=chgnet)
         for batch_size in batch_sizes:
             for hidden_channel in hidden_channels:
             

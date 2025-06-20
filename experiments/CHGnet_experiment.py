@@ -2,17 +2,14 @@ import torch
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch_geometric.data import Data
-from models.dimenet import DimeNet
-from models.gemnet import GemNet
-from data.QM9_dataset import QM9Dataset, QM9DatasetOriginal
-from data.MD17_dataset import MD17Dataset
-from data.ModelNet_dataset import ModelNetDataset
+from models.CHGnet import CHGNetSimple
+
 from data.fake_dataset import Fake_Dataset
-from data.ppi_dataset import PPI_Dataset
+
 import training.train as train
 import torch._dynamo
 
-def Train_On_Dimenet(benchmark, dataset, model_type='cat', batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10):
+def Train_On_CHGnet(benchmark, dataset, model_type='cat', batch_size=128, hidden_channels=64, num_layers=7, learning_rate=0.0001, epochs=10):
     cfg = {
         "hidden_channels": hidden_channels,
         "num_layers": num_layers,
@@ -34,12 +31,13 @@ def Train_On_Dimenet(benchmark, dataset, model_type='cat', batch_size=128, hidde
     print(f"Device: {device}")
     
     # Initialize Model
-    model = DimeNet(in_channels, hidden_channels, out_channels, num_layers=num_layers, task="regression", mode=model_type).to(device)
+    model = CHGNetSimple(in_channels, hidden_channels, out_channels, num_layers=num_layers, task="regression", mode=model_type).to(device)
+
     # compile the model with torch.compile(backend='inductor')
-    torch._dynamo.config.capture_scalar_outputs = True
-    torch._dynamo.config.suppress_errors = True
-    model = torch.compile(model, backend='inductor', dynamic=True)  
-    torch.set_float32_matmul_precision('high')
+    #torch._dynamo.config.capture_scalar_outputs = True
+    #torch._dynamo.config.suppress_errors = True
+    #model = torch.compile(model, backend='inductor', dynamic=True)  
+    #torch.set_float32_matmul_precision('high')
     optimizer = Adam(model.parameters(), lr=learning_rate)
     
     # Train EGNN
@@ -52,7 +50,7 @@ def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hid
     
     # First, train the EGNN model on cat model
     try:
-        cat_results = Train_On_Dimenet(
+        cat_results = Train_On_CHGnet(
             benchmark,
             dataset,
             model_type='cat',
@@ -79,7 +77,7 @@ def RealDataset_Experiment(benchmark, dataset, dataset_name, batch_size=128, hid
     print(cat_results)
     # Then, train the EGNN model on sum model
     try:
-        sum_results = Train_On_Dimenet(
+        sum_results = Train_On_CHGnet(
             benchmark,
             dataset,
             model_type='sum',
@@ -138,11 +136,11 @@ def FakeDataset_Experiment(benchmark, dataset_name, dataset=None ,batch_size=128
     if dataset is None:
         num_edges = int(num_nodes * (num_nodes - 1) * density / 2)  # Calculate number of edges based on density
         avg_degree = num_edges / num_nodes if num_nodes > 0 else 0
-        dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, dimenet=True)
+        dataset = Fake_Dataset(num_nodes=num_nodes, avg_degree=avg_degree, num_graphs=num_graphs, chgnet=True)
     
     try:
         # First, train the EGNN model on cat model
-        cat_results = Train_On_Dimenet(
+        cat_results = Train_On_CHGnet(
             benchmark,
             dataset,
             model_type='cat',
@@ -166,10 +164,12 @@ def FakeDataset_Experiment(benchmark, dataset_name, dataset=None ,batch_size=128
             'validation_loss': None
         }
         torch.cuda.empty_cache()
+
     print(cat_results)
+
     try:
         # Then, train the EGNN model on sum model
-        sum_results = Train_On_Dimenet(
+        sum_results = Train_On_CHGnet(
             benchmark,
             dataset,
             model_type='sum',

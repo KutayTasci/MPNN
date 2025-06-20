@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch_geometric.utils import to_undirected
 from torch import nn
 from tqdm import tqdm
+import numpy as np
 
 x_dim = 64
 pos_dim = 3
@@ -23,25 +24,38 @@ class RBF(nn.Module):
     def forward(self, d):
         return torch.exp(-self.gamma * (d.unsqueeze(-1) - self.centers) ** 2)
 
-class CBF(nn.Module):
-    def __init__(self, num_cbf=6):
+class Fourier(nn.Module):
+    """Fourier Expansion for angle features."""
+
+    def __init__(self, *, order: int = 5, learnable: bool = False) -> None:
+        """
+        order: maximum frequency order N in CHGNet eqn 1.
+        learnable: if True, frequencies {1…N} are trainable.
+        """
         super().__init__()
-        self.register_buffer("centers", torch.linspace(0, torch.pi, num_cbf))  # non-learnable buffer
-        self.gamma = 5.0  # fixed scalar
+        self.order = order
 
-    def forward(self, angles):  # angles: [T]
-        angles = angles.unsqueeze(-1)  # [T, 1]
-        return torch.exp(-self.gamma * (angles - self.centers) ** 2)  # [T, num_cbf]
+        freqs = torch.arange(1, order + 1, dtype=torch.float32)
+        if learnable:
+            self.frequencies = nn.Parameter(freqs)
+        else:
+            self.register_buffer("frequencies", freqs)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Expand angles/radians tensor x of shape [T] to Fourier features:
+          [1/√2, sin(n*x), cos(n*x)] for n=1..order
+        Output shape: [T, 1 + 2*order], divided by √π per CHGNet eq (1) :contentReference[oaicite:1]{index=1}.
+        """
+        T = x.shape[0]
+        out = x.new_zeros(T, 1 + 2 * self.order)
+        out[:, 0] = 1 / np.sqrt(2.0)
 
-class SBF(nn.Module):
-    def __init__(self, num_sbf=6):
-        super().__init__()
-        self.register_buffer("centers", torch.linspace(0, torch.pi, num_sbf))
-        self.gamma = 5.0
+        tmp = x.unsqueeze(1) * self.frequencies.unsqueeze(0)  # [T, order]
+        out[:, 1 : self.order + 1] = torch.sin(tmp)
+        out[:, self.order + 1 :] = torch.cos(tmp)
+        return out / np.sqrt(np.pi)
 
-    def forward(self, angles):
-        return torch.exp(-self.gamma * (angles.unsqueeze(-1) - self.centers) ** 2)
 
 def compute_triplets(edge_index, pos):
     # edge_index: [2, E], pos: [N, 3]
@@ -114,102 +128,9 @@ def compute_triplets(edge_index, pos):
         'angles': angles_all
     }
 
-def compute_quadruplets(edge_index, pos):
-    row, col = edge_index  # j -> i
-    E = edge_index.size(1)
 
-    # Create adjacency list
-    adj_dict = {}
-    for idx in range(E):
-        j, i = row[idx].item(), col[idx].item()
-        if i not in adj_dict:
-            adj_dict[i] = []
-        adj_dict[i].append((idx, j))
 
-    l_idx_list, k_idx_list, i_idx_list, j_idx_list = [], [], [], []
-    cbf_angles = []
-    sbf_angles = []
-
-    for i in adj_dict:
-        neighbors_i = adj_dict[i]
-        neighbors_i_indices = torch.tensor([n[1] for n in neighbors_i], dtype=torch.long)
-        vec_ik = pos[i] - pos[neighbors_i_indices]  # [Ni, 3]
-
-        for k_idx, k in neighbors_i:
-            if k == i or k not in adj_dict:
-                continue
-
-            neighbors_k = adj_dict[k]
-            neighbors_k_indices = torch.tensor([n[1] for n in neighbors_k], dtype=torch.long)
-            vec_lk = pos[neighbors_k_indices] - pos[k]  # [Nk, 3]
-
-            # Compute angles ikl
-            vec_ik_norm = vec_ik / vec_ik.norm(dim=1, keepdim=True)  # [Ni, 3]
-            vec_lk_norm = vec_lk / vec_lk.norm(dim=1, keepdim=True)  # [Nk, 3]
-            cos_ikl = torch.mm(vec_ik_norm, vec_lk_norm.T).clamp(-0.999, 0.999)  # [Ni, Nk]
-            angles_ikl = torch.acos(cos_ikl)  # [Ni, Nk]
-
-            # Compute dihedral angles jikl
-            j_idx = next((j for j in row.tolist() if col[row.tolist().index(j)] == i), i)
-            if 0 <= j_idx < pos.size(0):  # Ensure j_idx is a valid index
-                vec_ij = pos[i] - pos[j_idx]
-                normal1 = torch.cross(vec_ij.unsqueeze(0), vec_ik, dim=1)  # [Ni, 3]
-                normal2 = torch.cross(vec_ik.unsqueeze(1), vec_lk.unsqueeze(0), dim=2)  # [Ni, Nk, 3]
-                cos_dihedral = F.cosine_similarity(normal1.unsqueeze(1), normal2, dim=2).clamp(-0.999, 0.999)  # [Ni, Nk]
-                angles_dihedral = torch.acos(cos_dihedral)  # [Ni, Nk]
-            else:
-                continue
-
-            # Collect quadruplet indices and angles
-            l_idx_list.extend(neighbors_k_indices.tolist())
-            k_idx_list.extend([k] * len(neighbors_k_indices))
-            i_idx_list.extend([i] * len(neighbors_k_indices))
-            j_idx_list.extend([j_idx] * len(neighbors_k_indices))
-            cbf_angles.extend(angles_ikl.flatten().tolist())
-            sbf_angles.extend(angles_dihedral.flatten().tolist())
-
-    return {
-        'l_idx': torch.tensor(l_idx_list, dtype=torch.long),
-        'k_idx': torch.tensor(k_idx_list, dtype=torch.long),
-        'i_idx': torch.tensor(i_idx_list, dtype=torch.long),
-        'j_idx': torch.tensor(j_idx_list, dtype=torch.long),
-        'cbf_angles': torch.tensor(cbf_angles, dtype=torch.float),
-        'sbf_angles': torch.tensor(sbf_angles, dtype=torch.float)
-    }
-
-def create_new_fields_gemnet(data, x_dim=16, pos_dim=3, y_dim=1, edge_attr_dim=8,
-                             num_rbf=6, num_cbf=6, num_sbf=6, cutoff=5.0):
-    data.x = torch.randn(data.num_nodes, x_dim)
-    data.pos = torch.randn(data.num_nodes, pos_dim)
-    data.y = torch.randn(1, y_dim)
-
-    # Ensure undirected graph
-    data.edge_index = to_undirected(data.edge_index)
-
-    # Compute distances for RBF
-    row, col = data.edge_index
-    edge_vec = data.pos[row] - data.pos[col]
-    distances = edge_vec.norm(dim=1)  # [E]
-    rbf_layer = RBF(num_rbf=num_rbf, cutoff=cutoff)
-    rbf_values = rbf_layer(distances)  # [E, num_rbf]
-
-    # Compute quadruplets + geometric bases
-    quadruplet_info = compute_quadruplets(data.edge_index, data.pos)
-    cbf_layer = CBF(num_cbf)
-    sbf_layer = SBF(num_sbf)
-    cbf = cbf_layer(quadruplet_info['cbf_angles'])
-    sbf = sbf_layer(quadruplet_info['sbf_angles'])
-
-    # Store all
-    data.distances = distances
-    data.rbf = rbf_values
-    quadruplet_info['cbf'] = cbf
-    quadruplet_info['sbf'] = sbf
-    data.quadruplet_info = quadruplet_info
-
-    return data
-
-def create_new_fields_dimenet(data, num_rbf=6, num_cbf=6, cutoff=5.0):
+def create_new_fields_chgnet(data, num_rbf=6, num_cbf=6, cutoff=5.0):
     data.x = torch.randn(data.num_nodes, x_dim)
     data.pos = torch.randn(data.num_nodes, pos_dim)
     data.y = torch.randn(1, y_dim)
@@ -229,8 +150,8 @@ def create_new_fields_dimenet(data, num_rbf=6, num_cbf=6, cutoff=5.0):
 
     # Compute triplets + CBF
     triplet_info = compute_triplets(data.edge_index, data.pos)
-    cbf_layer = CBF(num_cbf=num_cbf)
-    cbf_values = cbf_layer(triplet_info['angles'])  # [T, num_cbf]
+    fourier_layer = Fourier(order=num_cbf)
+    cbf_values = fourier_layer(triplet_info['angles'])  # [T, num_cbf]
 
     # Store all
     data.distances = distances
@@ -248,7 +169,7 @@ def create_new_fields(data):
     return data
 
 class Fake_Dataset:
-    def __init__(self, root: str = 'data/FakeDataset', x_dimt=64, pos_dimt=3, edge_attr_dimt=64, y_dimt=1, num_graphs=1000, num_nodes=100, avg_degree=5, dimenet=False, gemnet=False):
+    def __init__(self, root: str = 'data/FakeDataset', x_dimt=64, pos_dimt=3, edge_attr_dimt=64, y_dimt=1, num_graphs=1000, num_nodes=100, avg_degree=5, chgnet=False, gemnet=False):
         """
         Initializes the Fake dataset with normalized node features x.
         """
@@ -259,14 +180,11 @@ class Fake_Dataset:
         edge_attr_dim = edge_attr_dimt
         y_dim = y_dimt
 
-        if dimenet:
+        if chgnet:
             basic_transform = T.Compose([
-                create_new_fields_dimenet
+                create_new_fields_chgnet
             ])
-        elif gemnet:
-            basic_transform = T.Compose([
-                create_new_fields_gemnet
-            ])
+
         else:
             basic_transform = T.Compose([
                 create_new_fields

@@ -27,6 +27,8 @@ load_inline(
 @torch._dynamo.disable
 def safe_reverse_scatter(input, mapping, output):
     return torch.ops.reverse_scatter.forward(input, mapping, output)
+
+
 class DimeNetLayerSum(MessagePassing):
     def __init__(self, in_channels, out_channels, hidden_channels=64, num_rbf=6, num_cbf=6):
         super(DimeNetLayerSum, self).__init__(aggr='add')

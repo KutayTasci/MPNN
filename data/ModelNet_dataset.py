@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from torch_geometric.utils import to_undirected
 from torch import nn
 from tqdm import tqdm
+import numpy as np
 
 
 
@@ -24,25 +25,37 @@ class RBF(nn.Module):
     def forward(self, d):
         return torch.exp(-self.gamma * (d.unsqueeze(-1) - self.centers) ** 2)
 
-class CBF(nn.Module):
-    def __init__(self, num_cbf=6):
+class Fourier(nn.Module):
+    """Fourier Expansion for angle features."""
+
+    def __init__(self, *, order: int = 5, learnable: bool = False) -> None:
+        """
+        order: maximum frequency order N in CHGNet eqn 1.
+        learnable: if True, frequencies {1…N} are trainable.
+        """
         super().__init__()
-        self.register_buffer("centers", torch.linspace(0, torch.pi, num_cbf))  # non-learnable buffer
-        self.gamma = 5.0  # fixed scalar
+        self.order = order
 
-    def forward(self, angles):  # angles: [T]
-        angles = angles.unsqueeze(-1)  # [T, 1]
-        return torch.exp(-self.gamma * (angles - self.centers) ** 2)  # [T, num_cbf]
+        freqs = torch.arange(1, order + 1, dtype=torch.float32)
+        if learnable:
+            self.frequencies = nn.Parameter(freqs)
+        else:
+            self.register_buffer("frequencies", freqs)
 
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Expand angles/radians tensor x of shape [T] to Fourier features:
+          [1/√2, sin(n*x), cos(n*x)] for n=1..order
+        Output shape: [T, 1 + 2*order], divided by √π per CHGNet eq (1) :contentReference[oaicite:1]{index=1}.
+        """
+        T = x.shape[0]
+        out = x.new_zeros(T, 1 + 2 * self.order)
+        out[:, 0] = 1 / np.sqrt(2.0)
 
-class SBF(nn.Module):
-    def __init__(self, num_sbf=6):
-        super().__init__()
-        self.register_buffer("centers", torch.linspace(0, torch.pi, num_sbf))
-        self.gamma = 5.0
-
-    def forward(self, angles):
-        return torch.exp(-self.gamma * (angles.unsqueeze(-1) - self.centers) ** 2)
+        tmp = x.unsqueeze(1) * self.frequencies.unsqueeze(0)  # [T, order]
+        out[:, 1 : self.order + 1] = torch.sin(tmp)
+        out[:, self.order + 1 :] = torch.cos(tmp)
+        return out / np.sqrt(np.pi)
 
 def compute_triplets(edge_index, pos):
     # edge_index: [2, E], pos: [N, 3]
@@ -115,7 +128,7 @@ def compute_triplets(edge_index, pos):
         'angles': angles_all
     }
 
-def create_new_fields_dimenet(data, num_rbf=6, num_cbf=6, cutoff=5.0):
+def create_new_fields_chgnet(data, num_rbf=6, num_cbf=6, cutoff=5.0):
     data.x = torch.randn(data.num_nodes, x_dim)
     data.pos = torch.randn(data.num_nodes, pos_dim)
     data.y = torch.randn(1, y_dim)
@@ -135,8 +148,8 @@ def create_new_fields_dimenet(data, num_rbf=6, num_cbf=6, cutoff=5.0):
 
     # Compute triplets + CBF
     triplet_info = compute_triplets(data.edge_index, data.pos)
-    cbf_layer = CBF(num_cbf=num_cbf)
-    cbf_values = cbf_layer(triplet_info['angles'])  # [T, num_cbf]
+    fourier_layer = Fourier(order=num_cbf)  # Fourier expansion for angles
+    cbf_values = fourier_layer(triplet_info['angles'])  # [T, num_cbf]
 
     # Store all
     data.distances = distances
@@ -155,7 +168,7 @@ def create_new_fields(data):
     return data
 
 class ModelNetDataset:
-    def __init__(self, root: str = 'data/ModelNet', name: str = '10', x_dimt=64, pos_dimt=3, edge_attr_dimt=64, y_dimt=1, dimenet=False):
+    def __init__(self, root: str = 'data/ModelNet', name: str = '10', x_dimt=64, pos_dimt=3, edge_attr_dimt=64, y_dimt=1, chgnet=False):
         """
         Initializes the ModelNet dataset with normalized node features x.
         """
@@ -167,10 +180,10 @@ class ModelNetDataset:
         edge_attr_dim = edge_attr_dimt
         y_dim = y_dimt
 
-        if dimenet:
+        if chgnet:
             basic_transform = T.Compose([
                 T.FaceToEdge(remove_faces=True),
-                create_new_fields_dimenet
+                create_new_fields_chgnet
             ])
         else:
             basic_transform = T.Compose([
